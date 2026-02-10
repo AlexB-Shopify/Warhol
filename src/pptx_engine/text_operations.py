@@ -1,0 +1,503 @@
+"""Text manipulation operations for PowerPoint slides.
+
+Provides primitives for text boxes, bullet lists, labels, hero numbers,
+and multi-format text boxes with independently styled runs.
+"""
+
+import logging
+from typing import Any
+
+from pptx.dml.color import RGBColor
+from pptx.enum.text import PP_ALIGN
+from pptx.util import Inches, Pt
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Core text box helpers
+# ---------------------------------------------------------------------------
+
+
+def add_textbox(
+    slide,
+    text: str,
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+    font_name: str = "Arial",
+    font_size: int = 18,
+    font_color: str = "#202124",
+    bold: bool = False,
+    italic: bool = False,
+    alignment: str = "left",
+    word_wrap: bool = True,
+    vertical_anchor: str = "top",
+    line_spacing: float | None = None,
+) -> object:
+    """Add a text box to a slide.
+
+    Args:
+        slide: The slide to add the text box to.
+        text: The text content.
+        left, top, width, height: Position and size in inches.
+        font_name: Font family name.
+        font_size: Font size in points.
+        font_color: Hex color string (e.g., "#202124").
+        bold: Whether text should be bold.
+        italic: Whether text should be italic.
+        alignment: Text alignment ("left", "center", "right").
+        word_wrap: Whether to enable word wrapping.
+        vertical_anchor: Vertical text position ("top", "middle", "bottom").
+        line_spacing: Optional line spacing multiplier.
+
+    Returns:
+        The created text box shape.
+    """
+    txBox = slide.shapes.add_textbox(
+        Inches(left), Inches(top), Inches(width), Inches(height)
+    )
+    tf = txBox.text_frame
+    tf.word_wrap = word_wrap
+
+    try:
+        tf.auto_size = None  # Manual sizing
+    except Exception:
+        pass
+
+    # Set vertical anchor via XML
+    if vertical_anchor in ("middle", "bottom"):
+        try:
+            from lxml import etree
+            txBody = txBox._element.find(
+                ".//{http://schemas.openxmlformats.org/drawingml/2006/main}bodyPr"
+            )
+            if txBody is not None:
+                anchor_map = {"top": "t", "middle": "ctr", "bottom": "b"}
+                txBody.set("anchor", anchor_map.get(vertical_anchor, "t"))
+        except Exception:
+            pass
+
+    p = tf.paragraphs[0]
+    p.text = text
+    _apply_run_format(p, font_name, font_size, font_color, bold, italic)
+    p.alignment = _get_alignment(alignment)
+
+    if line_spacing is not None:
+        try:
+            p.line_spacing = line_spacing
+        except Exception:
+            pass
+
+    return txBox
+
+
+def add_bullet_list(
+    slide,
+    items: list[str],
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+    font_name: str = "Arial",
+    font_size: int = 16,
+    font_color: str = "#202124",
+    bullet_color: str | None = None,
+    line_spacing: float = 1.2,
+) -> object:
+    """Add a bullet list to a slide.
+
+    Args:
+        slide: The slide to add bullets to.
+        items: List of bullet point strings.
+        left, top, width, height: Position and size in inches.
+        font_name: Font family name.
+        font_size: Font size in points.
+        font_color: Hex color string for text.
+        bullet_color: Hex color for bullets (defaults to font_color).
+        line_spacing: Line spacing multiplier.
+
+    Returns:
+        The created text box shape.
+    """
+    txBox = slide.shapes.add_textbox(
+        Inches(left), Inches(top), Inches(width), Inches(height)
+    )
+    tf = txBox.text_frame
+    tf.word_wrap = True
+
+    for i, item in enumerate(items):
+        if i == 0:
+            p = tf.paragraphs[0]
+        else:
+            p = tf.add_paragraph()
+
+        p.text = item
+        p.level = 0
+        _apply_run_format(p, font_name, font_size, font_color, bold=False, italic=False)
+        p.alignment = PP_ALIGN.LEFT
+
+        # Set bullet formatting
+        p.space_after = Pt(font_size * 0.4)
+
+        # Set line spacing
+        try:
+            p.line_spacing = line_spacing
+        except Exception:
+            pass
+
+    return txBox
+
+
+# ---------------------------------------------------------------------------
+# Enhanced text helpers
+# ---------------------------------------------------------------------------
+
+
+def add_label(
+    slide,
+    text: str,
+    left: float,
+    top: float,
+    width: float,
+    height: float = 0.25,
+    font_name: str = "Poppins Medium",
+    font_size: int = 9,
+    font_color: str = "#434343",
+    alignment: str = "left",
+    bold: bool = False,
+) -> object:
+    """Add a small label text (section markers, dates, confidential notices).
+
+    Optimized for 8-10pt supporting text that appears throughout
+    the base template as contextual information.
+
+    Args:
+        slide: Target slide.
+        text: Label text (e.g., '01 | Revenue growth', 'Confidential').
+        left, top: Position in inches.
+        width: Text area width in inches.
+        height: Text area height in inches.
+        font_name: Label font (typically Poppins Medium).
+        font_size: Font size in points (typically 8-10).
+        font_color: Text color.
+        alignment: Text alignment.
+        bold: Whether text should be bold.
+
+    Returns:
+        The created text box shape.
+    """
+    return add_textbox(
+        slide,
+        text,
+        left=left,
+        top=top,
+        width=width,
+        height=height,
+        font_name=font_name,
+        font_size=font_size,
+        font_color=font_color,
+        bold=bold,
+        alignment=alignment,
+    )
+
+
+def add_hero_number(
+    slide,
+    number_text: str,
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+    font_name: str = "Inter Tight ExtraLight",
+    font_size: int = 88,
+    font_color: str = "#CDF986",
+    alignment: str = "left",
+) -> object:
+    """Add a large display/hero number with ExtraLight font.
+
+    Used for data point slides where a single statistic is the
+    visual centerpiece (e.g., '47%', '$2.3M', '10x').
+
+    Args:
+        slide: Target slide.
+        number_text: The display number/value string.
+        left, top, width, height: Position and size in inches.
+        font_name: Display font (typically ExtraLight weight).
+        font_size: Large font size in points (80-100).
+        font_color: Number color (typically accent).
+        alignment: Text alignment.
+
+    Returns:
+        The created text box shape.
+    """
+    return add_textbox(
+        slide,
+        number_text,
+        left=left,
+        top=top,
+        width=width,
+        height=height,
+        font_name=font_name,
+        font_size=font_size,
+        font_color=font_color,
+        bold=False,
+        alignment=alignment,
+        vertical_anchor="middle",
+    )
+
+
+def add_multi_format_textbox(
+    slide,
+    runs: list[dict[str, Any]],
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+    alignment: str = "left",
+    line_spacing: float | None = None,
+) -> object:
+    """Add a text box with multiple independently formatted runs.
+
+    Enables patterns like '01 | Revenue growth' where '01' uses one
+    style and 'Revenue growth' uses another.
+
+    Args:
+        slide: Target slide.
+        runs: List of run specifications, each a dict with:
+            - text (str): The text content.
+            - font_name (str, optional): Font family.
+            - font_size (int, optional): Size in points.
+            - font_color (str, optional): Hex color.
+            - bold (bool, optional): Bold flag.
+            - italic (bool, optional): Italic flag.
+        left, top, width, height: Position and size in inches.
+        alignment: Text alignment for the paragraph.
+        line_spacing: Optional line spacing multiplier.
+
+    Returns:
+        The created text box shape.
+    """
+    txBox = slide.shapes.add_textbox(
+        Inches(left), Inches(top), Inches(width), Inches(height)
+    )
+    tf = txBox.text_frame
+    tf.word_wrap = True
+
+    try:
+        tf.auto_size = None
+    except Exception:
+        pass
+
+    p = tf.paragraphs[0]
+    p.alignment = _get_alignment(alignment)
+
+    if line_spacing is not None:
+        try:
+            p.line_spacing = line_spacing
+        except Exception:
+            pass
+
+    # Clear default text
+    p.text = ""
+
+    for i, run_spec in enumerate(runs):
+        run = p.add_run()
+        run.text = run_spec.get("text", "")
+
+        if "font_name" in run_spec:
+            run.font.name = run_spec["font_name"]
+        if "font_size" in run_spec:
+            run.font.size = Pt(run_spec["font_size"])
+        if "font_color" in run_spec:
+            run.font.color.rgb = _hex_to_rgb(run_spec["font_color"])
+        if "bold" in run_spec:
+            run.font.bold = run_spec["bold"]
+        if "italic" in run_spec:
+            run.font.italic = run_spec["italic"]
+
+    return txBox
+
+
+# ---------------------------------------------------------------------------
+# Placeholder operations
+# ---------------------------------------------------------------------------
+
+
+def set_placeholder_text(
+    slide,
+    placeholder_name: str,
+    text: str,
+    font_name: str | None = None,
+    font_size: int | None = None,
+    font_color: str | None = None,
+    bold: bool | None = None,
+) -> bool:
+    """Set text in a named placeholder on a slide.
+
+    Args:
+        slide: The slide containing the placeholder.
+        placeholder_name: Name or partial name of the placeholder shape.
+        text: Text to set.
+        font_name, font_size, font_color, bold: Optional formatting overrides.
+
+    Returns:
+        True if placeholder was found and updated, False otherwise.
+    """
+    name_lower = placeholder_name.lower()
+
+    for shape in slide.shapes:
+        if not shape.has_text_frame:
+            continue
+
+        shape_name = shape.name.lower()
+        if name_lower in shape_name or shape_name in name_lower:
+            tf = shape.text_frame
+            if tf.paragraphs:
+                p = tf.paragraphs[0]
+                p.text = text
+                if font_name or font_size or font_color or bold is not None:
+                    _apply_run_format(
+                        p,
+                        font_name or "Arial",
+                        font_size or 18,
+                        font_color or "#202124",
+                        bold=bold or False,
+                        italic=False,
+                    )
+            return True
+
+    logger.warning(f"Placeholder '{placeholder_name}' not found on slide")
+    return False
+
+
+def populate_slide_text(
+    slide,
+    title: str | None = None,
+    subtitle: str | None = None,
+    body: str | None = None,
+    font_config: dict | None = None,
+) -> None:
+    """Populate standard text placeholders on a slide.
+
+    Searches for title/subtitle/body placeholders by name and type,
+    then sets the text content with appropriate formatting.
+    """
+    fc = font_config or {}
+
+    for shape in slide.shapes:
+        if not shape.has_text_frame:
+            continue
+
+        name_lower = shape.name.lower()
+        is_placeholder = shape.is_placeholder
+
+        if is_placeholder:
+            try:
+                from pptx.enum.shapes import PP_PLACEHOLDER
+
+                ph_type = shape.placeholder_format.type
+                if ph_type in (PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE):
+                    if title:
+                        _set_shape_text(shape, title, fc.get("title_font"), fc.get("title_size"))
+                    continue
+                elif ph_type == PP_PLACEHOLDER.SUBTITLE:
+                    if subtitle:
+                        _set_shape_text(
+                            shape, subtitle, fc.get("body_font"), fc.get("subtitle_size")
+                        )
+                    continue
+                elif ph_type == PP_PLACEHOLDER.BODY:
+                    if body:
+                        _set_shape_text(shape, body, fc.get("body_font"), fc.get("body_size"))
+                    continue
+            except Exception:
+                pass
+
+        # Fallback: match by shape name
+        if "title" in name_lower and title:
+            _set_shape_text(shape, title, fc.get("title_font"), fc.get("title_size"))
+        elif "subtitle" in name_lower and subtitle:
+            _set_shape_text(shape, subtitle, fc.get("body_font"), fc.get("subtitle_size"))
+        elif "body" in name_lower or "content" in name_lower or "text" in name_lower:
+            if body:
+                _set_shape_text(shape, body, fc.get("body_font"), fc.get("body_size"))
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+
+def _set_shape_text(
+    shape,
+    text: str,
+    font_name: str | None = None,
+    font_size: int | None = None,
+) -> None:
+    """Set text on a shape, preserving existing formatting where possible."""
+    tf = shape.text_frame
+    if tf.paragraphs:
+        # Preserve formatting from first run if it exists
+        p = tf.paragraphs[0]
+        existing_font_name = None
+        existing_font_size = None
+        if p.runs:
+            run = p.runs[0]
+            existing_font_name = run.font.name
+            if run.font.size:
+                existing_font_size = int(run.font.size.pt)
+
+        p.text = text
+        if p.runs:
+            run = p.runs[0]
+            if font_name:
+                run.font.name = font_name
+            elif existing_font_name:
+                run.font.name = existing_font_name
+            if font_size:
+                run.font.size = Pt(font_size)
+            elif existing_font_size:
+                run.font.size = Pt(existing_font_size)
+
+
+def _apply_run_format(
+    paragraph,
+    font_name: str,
+    font_size: int,
+    font_color: str,
+    bold: bool,
+    italic: bool,
+) -> None:
+    """Apply font formatting to all runs in a paragraph."""
+    color_rgb = _hex_to_rgb(font_color)
+    for run in paragraph.runs:
+        run.font.name = font_name
+        run.font.size = Pt(font_size)
+        run.font.bold = bold
+        run.font.italic = italic
+        run.font.color.rgb = color_rgb
+
+
+def _get_alignment(alignment: str) -> int:
+    """Convert alignment string to PP_ALIGN constant."""
+    align_map = {
+        "left": PP_ALIGN.LEFT,
+        "center": PP_ALIGN.CENTER,
+        "right": PP_ALIGN.RIGHT,
+        "justify": PP_ALIGN.JUSTIFY,
+    }
+    return align_map.get(alignment.lower(), PP_ALIGN.LEFT)
+
+
+def _hex_to_rgb(hex_color: str) -> RGBColor:
+    """Convert hex color string to RGBColor."""
+    hex_color = hex_color.lstrip("#")
+    if len(hex_color) > 6:
+        hex_color = hex_color[:6]
+    return RGBColor(
+        int(hex_color[0:2], 16),
+        int(hex_color[2:4], 16),
+        int(hex_color[4:6], 16),
+    )

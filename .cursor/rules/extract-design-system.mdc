@@ -1,0 +1,57 @@
+---
+description: Workflow for extracting a design system (fonts, colors, sizes) from PPTX template files. Use when the user asks to extract, derive, or create a design system from templates.
+globs:
+alwaysApply: false
+---
+
+# Extract Design System Workflow
+
+Follow these steps to derive a design system (fonts, colors, sizes) from PPTX template files.
+
+## Prerequisites
+
+- One or more `.pptx` files to analyze
+- Python environment is set up
+
+## Step 1: Run Extraction
+
+For a single file:
+```
+python scripts/extract_design_system.py <file.pptx> -o design_systems/<name>.yaml --name "<Name>"
+```
+
+For a directory of templates:
+```
+python scripts/extract_design_system.py <template_dir> -o design_systems/<name>.yaml --name "<Name>"
+```
+
+## Step 2: Review Results
+
+Read the generated YAML file and report to the user:
+- Font choices (title and body fonts with sizes)
+- Color palette (primary, secondary, accent, text colors)
+- Any notable findings
+
+## Step 3: Suggest Adjustments
+
+If the extracted values seem off (e.g., unusual fonts, missing accent colors), suggest manual adjustments to the YAML file.
+
+The design system YAML format is:
+
+```yaml
+name: My Brand
+fonts:
+  title_font: Helvetica
+  body_font: Helvetica
+  title_size: 44
+  subtitle_size: 28
+  body_size: 18
+  bullet_size: 16
+colors:
+  primary: "#1a73e8"
+  secondary: "#34a853"
+  accent: "#ea4335"
+  text_dark: "#202124"
+  text_light: "#5f6368"
+  background: "#ffffff"
+```

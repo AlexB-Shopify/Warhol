@@ -1,0 +1,172 @@
+---
+description: Guidance for matching slides to templates from the template registry. Used during the template matching stage of the generate-presentation workflow when a template registry exists.
+globs:
+alwaysApply: false
+---
+
+# Template Matching — Clone-and-Replace Architecture
+
+You are a presentation design expert. Your job is to find the best template slide for EVERY slide in the deck schema. Clone-and-replace is the **primary build mode** — every slide should be a clone of a visually rich template slide with its text content replaced.
+
+1. **`use_as_is`** (PRIMARY) — Clone a template slide, preserving all visual elements (backgrounds, images, decorations). The builder replaces text content in content zones while keeping the design intact.
+2. **`build_from_base`** (FALLBACK ONLY) — Generate from a branded layout. Use only when no template scores above the minimum threshold (0.30).
+
+## Goal: 100% Template Coverage
+
+**Target: Every slide matched to a template.** Even a loosely-matching template with branded backgrounds and visual elements produces a dramatically better slide than composing from scratch on a blank canvas. Only fall back to `build_from_base` when truly no template is compatible.
+
+The algorithmic matcher (`scripts/match_templates.py`) now defaults to matching all slides. Run it first, then review and override specific matches where your design expertise suggests a better choice.
+
+## Decision Framework
+
+For each slide in the deck schema, evaluate it through these tiers:
+
+### Tier 1: Is there a strong visual match?
+
+Actively scan the template registry for slides that would ENHANCE this position in the deck. A slide qualifies for `use_as_is` when:
+
+- The template slide's **existing content** is relevant to the deck schema's intent (doesn't need to be exact — 60%+ topical overlap is enough)
+- The template slide is **visually polished** — it has proper backgrounds, images, formatting, or data visualizations
+- The template slide is **dimension-compatible** (see Tier 3 below)
+- Using it won't break the **narrative flow** — the audience won't be confused
+
+**Actively seek `use_as_is` candidates for these slide types:**
+- **Data/metrics slides** — template slides with charts, graphs, big numbers, or stats
+- **Image/visual slides** — product screenshots, architecture diagrams, illustrations
+- **Hero/brand slides** — visually rich title or section slides with branded imagery
+- **Team/people slides** — slides with photos or organizational visuals
+- **Quote slides** — visually styled quote layouts
+- **Comparison slides** — side-by-side layouts with visual treatment
+
+**Less suitable for `use_as_is`:**
+- Slides where the title or key message is significantly different from the deck schema
+- Content-heavy text slides where the text is wrong for this presentation
+- Slides that would feel jarring or off-topic in context
+
+### Tier 2: Build from base (default for text-heavy content)
+
+Slides that don't have a strong visual match should be `build_from_base`. This produces clean, consistent slides using the base template's branded layouts and the deck schema's content. Best for:
+
+- Custom content slides with specific bullet points
+- Slides where the deck schema content is unique to this presentation
+- Simple text layouts (title + bullets, title + body)
+
+### Tier 3: Dimension Compatibility (Hard Filter)
+
+**CRITICAL: Only use `use_as_is` for slides from dimension-compatible source files.**
+
+Template slides with dimensions **10.0" x 5.625"** are compatible with the base template.
+Template slides from files with larger dimensions (20.0" x 11.2", 26.7" x 15.0", 13.3" x 7.5") will **overflow and look broken** — never use these as `use_as_is`.
+
+Check the `template_file` field in the registry. Known incompatible files:
+- "2025 Enterprise Second Pitch Deck" — 20"x11.2"
+- "L'Oréal_Shopify" — 26.7"x15"
+- "basic.pptx" — 13.3"x7.5"
+
+If unsure, only use slides from files with 10"x5.625" dimensions.
+
+## Source Priority
+
+When looking for `use_as_is` candidates, prioritize sources in this order:
+
+1. **Shopify Example Technical Workshop Slide Bank** — the base slide bank has 179 richly designed slides covering a wide range of topics. These are the best candidates because they share the same dimension, theme, and branding as the base template.
+2. **Compatible corporate templates** — AI-Native Commerce, Shopify Payments, Enterprise Technical Platform Overview, Enterprise First Pitch Deck
+3. **Compatible minimal templates** — Simplified Shopify Slide Design System
+
+## Input
+
+Read two files:
+- `workspace/deck_schema.json` — the slides to match
+- `template_registry.json` — the available templates
+
+For each template in the registry, note:
+- Index (0-based position in the templates array)
+- `template_file`, `slide_type`, `tags`, `complexity`, `placeholders` count, `has_images`, `description`
+- `text_content` (extracted title/body/all_text from the slide)
+- `content_keywords` (topic keywords for semantic matching)
+- `visual_elements` (charts, diagrams, photos, etc.)
+- `suitable_for` (what content intents the slide works well for)
+
+For each slide in the deck schema, note:
+- `slide_number`, `slide_type`, `title`, `intent`, content block count, `layout_hints`
+- `visual_intent` and `design_notes` if present (from the content development agent)
+
+## Matching Process
+
+### Option A: Algorithmic Pre-Scoring (Recommended)
+
+Run the algorithmic matcher first for a scored starting point:
+
+```
+python scripts/match_templates.py workspace/deck_schema.json template_registry.json -o workspace/template_matches.json
+```
+
+This produces scored matches using a weighted algorithm. Review the output and override any decisions that look wrong based on your presentation expertise.
+
+### Option B: Manual Matching
+
+If algorithmic matching is not available, match manually:
+
+1. **For each deck schema slide**, scan ALL template registry entries (not just same-type matches)
+2. **Score relevance** based on:
+   - **Content keyword overlap** (30%): Compare template `content_keywords` with deck slide intent/title/content
+   - **Slide type compatibility** (30%): Same type = full score, compatible types = partial
+   - **Structural fit** (20%): Placeholder count matches content block count
+   - **Visual alignment** (10%): Template visual richness matches expectations
+   - **Tag overlap** (10%): Style tags match
+3. **Select the best match** if the score is above threshold (60%+ relevance)
+4. **Default to `build_from_base`** if no strong match exists
+
+## Output Format
+
+Write the result to `workspace/template_matches.json`:
+
+```json
+{
+  "matches": [
+    {
+      "slide_number": 1,
+      "match_type": "build_from_base",
+      "template_index": -1,
+      "confidence": 0.9,
+      "reasoning": "Title slide — generate from base layout for consistent branding with custom title and subtitle",
+      "modifications": []
+    },
+    {
+      "slide_number": 5,
+      "match_type": "use_as_is",
+      "template_index": 42,
+      "confidence": 0.85,
+      "reasoning": "Template slide 42 has a polished data visualization about platform capabilities that matches this slide's intent to show technical strengths. Source: AI-Native Commerce deck, 10x5.625 compatible.",
+      "modifications": []
+    }
+  ]
+}
+```
+
+### Field Descriptions
+
+- `slide_number` (int): The slide number from the deck schema (1-based)
+- `match_type` (string): `"use_as_is"` to clone template slide exactly, `"build_from_base"` to generate from layout
+- `template_index` (int): The 0-based index of the template slide. Use `-1` when match_type is `build_from_base`
+- `confidence` (float, 0.0-1.0): How confident you are in the decision
+- `reasoning` (string): Brief explanation including which source file and why. For `use_as_is`, mention the template's content and why it fits.
+- `modifications` (list of strings): Notes about manual adjustments needed
+
+## Rules
+
+- Every slide in the deck schema must have a match entry
+- For `use_as_is` slides, template indices must be valid (0 to len(templates)-1)
+- For `build_from_base` slides, set template_index to -1
+- **Never use slides from dimension-incompatible files** (20"x11.2", 26.7"x15", 13.3"x7.5")
+- Target 20-30% `use_as_is` slides if the bank has relevant content
+- `use_as_is` slides work best for visual/data slides that would be hard to recreate from text
+- In reasoning, always note the source file name for `use_as_is` matches
+
+## Validation
+
+After writing the JSON file, validate it:
+
+```
+python scripts/validate_schema.py workspace/template_matches.json MatchResult
+```

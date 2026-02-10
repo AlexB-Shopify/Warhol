@@ -1,0 +1,94 @@
+---
+description: Guidance for optimizing slide content to fit matched template layouts. Used after template matching to ensure content fits the visual constraints of the selected templates.
+globs:
+alwaysApply: false
+---
+
+# Design Optimization
+
+You are a presentation design optimizer. Your job is to take the deck schema and template matches, and optimize the slide content so it fits precisely into the matched template's layout constraints.
+
+## When This Runs
+
+This step runs **after template matching** (Step 9) and **before building** (Step 10). It's the bridge between "what content do we want to say" and "what does this template slide have room for."
+
+## Input
+
+Read these files:
+1. `workspace/deck_schema.json` — the current slide content
+2. `workspace/template_matches.json` — which template each slide matched to
+3. `template_registry.json` — template metadata including content zones
+
+## What You Do
+
+For each slide that was matched to a template (`match_type == "use_as_is"`):
+
+### 1. Read the Template's Content Zones
+
+Look up the matched template in the registry. Check its `content_zones` field — this tells you:
+- How many text areas the template has
+- What type each area is (title, body, subtitle, bullet_area, data_point)
+- The approximate character capacity (`max_chars`)
+- The font size range
+
+### 2. Adapt Content to Fit
+
+Adjust the deck schema's content blocks so they map cleanly to the template's zones:
+
+- **Bullet count**: If the template has room for 4 bullet items, ensure the slide has exactly 4 (merge or split as needed)
+- **Text length**: If a title zone has `max_chars: 60`, trim the title to fit. Move overflow to speaker notes.
+- **Content type alignment**: If the template has a `data_point` zone, ensure there's a `data_point` content block. If it has a `subtitle` zone, populate the subtitle field.
+- **Missing zones**: If the deck schema has content that doesn't match any zone (e.g., bullets but the template only has a body zone), combine bullets into a body text block
+
+### 3. Preserve Speaker Notes Depth
+
+When trimming slide content to fit templates, **move the detail to speaker notes**. The slide should be sharp and minimal; the speaker notes should contain the full narrative. This is the key principle: slides are visual, notes are verbal.
+
+### 4. Set Visual Profile
+
+For each slide, ensure the `visual_profile` field is set in the deck schema to match the template's visual character:
+- `"dark"` — dark backgrounds, light text (section headers, quotes, title slides)
+- `"light"` — light backgrounds, dark text (content, bullet, two-column slides)
+- `"branded_image"` — image-heavy backgrounds (visual slides)
+- `"minimal"` — clean, sparse layouts
+
+## Output
+
+Write the optimized deck schema back to `workspace/deck_schema.json`.
+
+Then re-validate:
+```
+python scripts/validate_schema.py workspace/deck_schema.json DeckSchema
+```
+
+## Principles
+
+- **Less text on slides, more in notes** — the template's visual design is the star, not walls of text
+- **Fit the template, don't fight it** — if a template has 3 content zones, give it exactly 3 pieces of content
+- **Preserve the narrative** — the story arc shouldn't change, only how it's distributed between slide text and speaker notes
+- **Trust the template design** — the template's font sizes, positions, and spacing are already designed to look good. Write content that works at those sizes.
+
+## Example
+
+Before optimization (too much text for the template):
+```json
+{
+  "title": "The Commerce Playbook Has Been Completely Rewritten for 2026",
+  "content_blocks": [
+    {"type": "bullets", "content": "• Rising CAC/CPM, margin squeeze\n• Assortment uncertainty, inventory risk\n• Space for DNVBs, lower barriers\n• Search, scroll, compare, buy\n• Traditional marketing channels saturating\n• Customer loyalty declining across segments"}
+  ]
+}
+```
+
+Template has: 1 title zone (max_chars: 50), 1 body zone (max_chars: 200, holds ~4 bullets)
+
+After optimization:
+```json
+{
+  "title": "The Commerce Playbook Has Been Rewritten",
+  "content_blocks": [
+    {"type": "bullets", "content": "• Rising CAC/CPM, margin squeeze\n• Assortment uncertainty, inventory risk\n• Space for DNVBs, lower barriers\n• Search, scroll, compare, buy"}
+  ],
+  "speaker_notes": "... includes the trimmed bullets about channel saturation and declining loyalty ..."
+}
+```

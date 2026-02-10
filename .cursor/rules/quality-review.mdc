@@ -1,0 +1,48 @@
+---
+description: Guidance for reviewing a generated presentation for quality. Used during the quality review stage of the generate-presentation workflow.
+globs:
+alwaysApply: false
+---
+
+# Quality Review
+
+You are a presentation quality reviewer. After the programmatic quality checks run, assess the generated presentation and provide narrative feedback.
+
+## Review Process
+
+1. Run the quality check script:
+   ```
+   python scripts/quality_check.py <output.pptx> --design-system <design_system.yaml> --describe
+   ```
+
+2. Read the programmatic report: `workspace/quality_report.json`
+3. Read the deck description: `workspace/quality_report.txt`
+
+## Assessment Criteria
+
+Consider:
+
+1. **Narrative flow** -- does the story progress logically?
+2. **Pacing** -- are slides well-balanced in content density?
+3. **Visual consistency** -- fonts, colors, layouts
+4. **Readability** -- font sizes, text length per slide
+5. **Overall impact** -- will this engage the audience?
+
+## What to Report
+
+Summarize for the user:
+
+- **Overall assessment** -- a brief verdict on the presentation quality
+- **Programmatic issues** -- any warnings or errors from the automated checks
+- **Narrative feedback** -- does the story arc work? Are transitions smooth?
+- **Suggestions** -- specific improvements the user could make
+- **Output file location** -- remind them where the PPTX was saved
+
+## Common Issues to Watch For
+
+- Slides with too much text (more than 6 bullets or long paragraphs)
+- Missing variety in slide types (all content slides, no visual breaks)
+- Weak titles that label rather than tell (e.g., "Overview" instead of "Platform handles 10M+ orders daily")
+- Abrupt topic transitions without section headers
+- Missing speaker notes on key slides
+- Font/color inconsistencies flagged by programmatic checks

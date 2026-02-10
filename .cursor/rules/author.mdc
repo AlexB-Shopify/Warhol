@@ -1,0 +1,106 @@
+---
+description: Presentation authoring expertise -- how to write compelling titles, bullets, speaker notes, and content. Referenced during content extraction and narrative architecture stages.
+globs:
+alwaysApply: false
+---
+
+# Presentation Author
+
+This rule defines the writing standards for all presentation content you produce. Apply these principles whenever writing content for `content_inventory.json` or `deck_schema.json`.
+
+## Title Writing
+
+Titles are the most important text on every slide. The audience should understand the entire presentation story by reading only the titles in sequence.
+
+### Do
+
+- **Tell, don't label**: "Platform processes 10M+ orders daily" not "Platform Overview"
+- **Lead with the insight**: "Customer retention increased 35%" not "Retention Metrics"
+- **Use active voice**: "We reduced costs by $2M" not "Cost Reduction Achieved"
+- **Be specific**: "3 reasons merchants choose Shopify" not "Why Shopify"
+- **Front-load the key word**: "Revenue: $4.2B and growing" not "A look at our revenue numbers"
+
+### Don't
+
+- Generic labels: "Introduction", "Overview", "Summary", "Conclusion"
+- Questions as titles (unless deliberately rhetorical for a hook slide)
+- Titles longer than 10 words
+- ALL CAPS (emphasis belongs in design, not typography hacks)
+
+## Bullet Writing (The 6x6 Rule)
+
+Each bullet slide: maximum 6 bullets, maximum 6 words per bullet.
+
+### Technique
+
+1. Start with the verb or key number
+2. Cut articles (a, the, an) ruthlessly
+3. Cut filler ("in order to" --> "to", "the ability to" --> "can")
+4. Use parallel structure (all bullets start the same way grammatically)
+5. Each bullet = one idea, no semicolons joining two thoughts
+
+### Examples
+
+Bad:
+- "We have seen that our enterprise customers tend to have higher retention rates compared to SMB customers"
+
+Good:
+- "Enterprise retention 2x higher than SMB"
+
+Bad:
+- "The platform is able to handle more than 10 million orders per day"
+
+Good:
+- "10M+ orders processed daily"
+
+## Speaker Notes
+
+Speaker notes are what the presenter says out loud. They complement the slide -- they don't repeat it.
+
+### Principles
+
+- **Conversational tone** -- write as if talking to a colleague, not reading a report
+- **Bridge slides** -- start each note with a transition from the previous slide ("Building on that growth...")
+- **Add context the slide can't** -- the "why" behind the data, the anecdote behind the stat
+- **Keep to 3-4 sentences** -- enough to guide the presenter, not a script to read verbatim
+- **Include the key talking point** -- what's the one thing the presenter must say on this slide?
+
+### Example
+
+Slide title: "Revenue grew 40% in Q4"
+Slide bullets: key metrics
+
+Speaker notes: "This was our strongest quarter ever, driven primarily by the enterprise segment. Worth noting -- this growth came while we actually reduced customer acquisition costs by 15%. The key driver was expansion revenue from existing accounts, which tells us our product-market fit is strengthening."
+
+## Content Density by Slide Type
+
+| Slide Type | Text Budget | Focus |
+|---|---|---|
+| `title` | Title + subtitle only | Maximum impact, minimal text |
+| `section_header` | Title + optional subtitle | Breathing room, signals a shift |
+| `content` | Title + 3-5 bullets or 2-3 short paragraphs | Core information delivery |
+| `two_column` | Title + balanced content in each column | Comparison or parallel ideas |
+| `bullet_list` | Title + 4-6 bullets | Scannable list of points |
+| `quote` | One quote + attribution | Let the words breathe |
+| `comparison` | Title + two sides with minimal text | Visual contrast |
+| `chart` | Title + one key callout | Let the data speak |
+| `closing` | Title + CTA or contact info | Clear next step |
+
+## Audience Calibration
+
+Adjust writing style based on the target audience:
+
+- **Executive**: Lead with outcomes and business impact. Numbers first, details available on request. Short, decisive language.
+- **Technical**: Precision matters. Use correct terminology. Include architecture-level context. Speaker notes can go deeper.
+- **Sales/customer-facing**: Benefits over features. Social proof (quotes, logos, case studies). Aspirational language.
+- **Internal/team**: Can be more candid. Include blockers and risks alongside wins. Action items welcome.
+
+## Content Extraction Quality
+
+When extracting content from source documents:
+
+- **Preserve precision** -- keep exact numbers, don't round or paraphrase metrics
+- **Capture the hierarchy** -- distinguish headline claims from supporting evidence
+- **Flag quotable moments** -- anything that would land well spoken aloud goes in `quotes`
+- **Assess ruthlessly** -- mark sections `low` importance if they're background context that won't make the final deck
+- **Synthesize, don't summarize** -- a good section `content` field distills the insight, it doesn't just shorten the original

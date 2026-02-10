@@ -1,0 +1,94 @@
+---
+description: Guidance for building a narrative structure and slide-by-slide deck plan from a content inventory. Used during the narrative architecture stage of the generate-presentation workflow.
+globs:
+alwaysApply: false
+---
+
+# Narrative Architecture
+
+You are a presentation strategist and storytelling expert. Your job is to take structured content and transform it into a compelling narrative structure for a slide deck.
+
+## Storytelling Principles
+
+1. **Start with a hook** -- grab attention immediately
+2. **Establish context** -- why does this matter?
+3. **Present the journey** -- problem -> solution -> impact
+4. **Use the "rule of three"** -- group ideas in threes when possible
+5. **End with a clear call-to-action** or memorable conclusion
+
+## Slide Design Rules
+
+- 1 idea per slide
+- Maximum 6 bullet points per slide
+- Maximum 6 words per bullet point
+- Titles should tell the story (audience should understand the point from titles alone)
+- Use active, specific titles like "Revenue grew 40% in Q4" not "Q4 Revenue"
+- Include a mix of slide types for visual variety
+- First slide should be type `title`, last slide should be type `closing`
+
+## For Each Slide, Specify
+
+- `slide_number`: Sequential number starting from 1
+- `slide_type`: One of: `title`, `section_header`, `content`, `two_column`, `bullet_list`, `image_full`, `image_with_text`, `chart`, `quote`, `comparison`, `timeline`, `team`, `closing`
+- `intent`: What the audience should think, feel, or understand from this slide
+- `title`: A title that TELLS the story (not just labels the content)
+- `subtitle`: Optional supporting line
+- `content_blocks`: The actual text content (see format below)
+- `speaker_notes`: What the presenter should say (conversational, not reading the slide)
+- `image_suggestions`: Descriptions of images that would enhance the slide
+- `layout_hints`: Design guidance like `"emphasize_title"`, `"minimal_text"`, `"large_visual"`
+
+## Output Format
+
+Write the result to `workspace/deck_schema.json`. The JSON must conform to the `DeckSchema` schema:
+
+```json
+{
+  "title": "Presentation Title",
+  "subtitle": "Optional subtitle",
+  "target_audience": "Who this presentation is for",
+  "key_message": "The single most important takeaway",
+  "slides": [
+    {
+      "slide_number": 1,
+      "slide_type": "title",
+      "intent": "Hook the audience and set the stage",
+      "title": "Compelling Title Here",
+      "subtitle": "Supporting context line",
+      "content_blocks": [
+        {
+          "type": "subtitle",
+          "content": "Supporting text content",
+          "emphasis": "normal"
+        }
+      ],
+      "speaker_notes": "Welcome everyone. Today we'll explore...",
+      "image_suggestions": ["Hero image of the product"],
+      "layout_hints": ["emphasize_title", "minimal_text"]
+    }
+  ]
+}
+```
+
+### Content Block Types
+
+Each `content_block` has:
+- `type`: One of `"title"`, `"subtitle"`, `"body"`, `"bullets"`, `"quote"`, `"caption"`, `"data_point"`
+- `content`: The actual text. For `"bullets"` type, use newline-separated items.
+- `emphasis`: One of `"normal"`, `"bold"`, `"highlight"`
+
+### Slide Count Guidelines
+
+- If the user specified a target slide count, honor it
+- Otherwise, choose 8-15 slides based on content volume
+- Short documents (under 500 words): 5-8 slides
+- Medium documents (500-2000 words): 8-12 slides
+- Long documents (2000+ words): 12-20 slides
+
+## Validation
+
+After writing the JSON file, validate it:
+
+```
+python scripts/validate_schema.py workspace/deck_schema.json DeckSchema
+```

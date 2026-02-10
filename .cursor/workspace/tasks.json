@@ -1,0 +1,152 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "📄 Parse Input Document",
+      "type": "shell",
+      "command": "source .venv/bin/activate && python scripts/parse_input.py ${input:inputFile} -o workspace/parsed_content.txt",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": true,
+        "showReuseMessage": false
+      },
+      "detail": "Parse a document (PDF/DOCX/PPTX/TXT/MD) and extract text to workspace/"
+    },
+    {
+      "label": "✅ Validate JSON Schema",
+      "type": "shell",
+      "command": "source .venv/bin/activate && python scripts/validate_schema.py ${input:jsonFile} ${input:schemaName}",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": true,
+        "showReuseMessage": false
+      },
+      "detail": "Validate a workspace JSON file against a Pydantic schema"
+    },
+    {
+      "label": "🏗️ Build Presentation",
+      "type": "shell",
+      "command": "source .venv/bin/activate && python scripts/build_slides.py workspace/deck_schema.json -o output.pptx --design-system design_systems/default.yaml",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "focus": true,
+        "showReuseMessage": false
+      },
+      "detail": "Build PPTX from workspace/deck_schema.json with default design system"
+    },
+    {
+      "label": "🏗️ Build with Templates",
+      "type": "shell",
+      "command": "source .venv/bin/activate && python scripts/build_slides.py workspace/deck_schema.json -o output.pptx --design-system design_systems/default.yaml --matches workspace/template_matches.json --template-registry template_registry.json",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "focus": true,
+        "showReuseMessage": false
+      },
+      "detail": "Build PPTX using template matching results"
+    },
+    {
+      "label": "🔍 Quality Check",
+      "type": "shell",
+      "command": "source .venv/bin/activate && python scripts/quality_check.py output.pptx --design-system design_systems/default.yaml --describe -o workspace/quality_report.json",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": true,
+        "showReuseMessage": false
+      },
+      "detail": "Run programmatic quality checks on the generated presentation"
+    },
+    {
+      "label": "📐 Analyze Templates",
+      "type": "shell",
+      "command": "source .venv/bin/activate && python scripts/analyze_templates.py extract ${input:templateDir} -o workspace/template_descriptions.json",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "focus": true,
+        "showReuseMessage": false
+      },
+      "detail": "Extract structural metadata from template PPTX files"
+    },
+    {
+      "label": "🎨 Extract Design System",
+      "type": "shell",
+      "command": "source .venv/bin/activate && python scripts/extract_design_system.py ${input:designSource} -o design_systems/extracted.yaml",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": true,
+        "showReuseMessage": false
+      },
+      "detail": "Derive fonts, colors, and sizes from PPTX files"
+    },
+    {
+      "label": "🧹 Clean Workspace",
+      "type": "shell",
+      "command": "rm -f workspace/*.json workspace/*.txt && echo 'Workspace cleaned'",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": false,
+        "showReuseMessage": false
+      },
+      "detail": "Remove all intermediate files from workspace/"
+    },
+    {
+      "label": "🔧 Setup Environment",
+      "type": "shell",
+      "command": "python3 -m venv .venv && source .venv/bin/activate && pip install -e . && echo '✅ Environment ready'",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "focus": true,
+        "showReuseMessage": false
+      },
+      "detail": "Create virtual environment and install all dependencies"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "inputFile",
+      "type": "promptString",
+      "description": "Path to input document (e.g., documents/report.pdf)"
+    },
+    {
+      "id": "jsonFile",
+      "type": "promptString",
+      "description": "Path to JSON file (e.g., workspace/content_inventory.json)"
+    },
+    {
+      "id": "schemaName",
+      "type": "pickString",
+      "description": "Schema to validate against",
+      "options": ["ContentInventory", "DeckSchema", "MatchResult", "TemplateRegistry", "DesignSystem"]
+    },
+    {
+      "id": "templateDir",
+      "type": "promptString",
+      "description": "Template directory (e.g., templates/corporate/)",
+      "default": "templates/"
+    },
+    {
+      "id": "designSource",
+      "type": "promptString",
+      "description": "PPTX file or directory to extract design from",
+      "default": "templates/"
+    }
+  ]
+}

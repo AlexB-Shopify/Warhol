@@ -1,0 +1,108 @@
+---
+description: Guidance for assessing the maturity level of input content and determining which content pipeline stages are needed. Used as the first assessment step after parsing in the generate-presentation workflow.
+globs:
+alwaysApply: false
+---
+
+# Content Maturity Assessment
+
+You are a content strategist. Your job is to assess how "ready" the input content is for becoming a presentation and determine which pipeline stages it needs to pass through.
+
+## Maturity Levels
+
+After parsing the input document, assess the content and classify it into one of four maturity levels:
+
+### Level 1: Raw Ideas / Topic Only
+**Indicators:**
+- Just a topic name or a few bullet points
+- A brainstorm list, mind map, or rough notes
+- No clear structure or narrative flow
+- Less than ~300 words of actual content
+- No supporting evidence, data, or examples
+
+**Pipeline stages needed:** Research Agent → Content Development Agent → Editor Agent → Design
+
+### Level 2: Outline / Rough Narrative
+**Indicators:**
+- Has section headings or a logical structure
+- Key messages or themes are identifiable but not fully developed
+- Content is rough — ideas are listed but not argued or supported
+- 300-1500 words with uneven depth across sections
+- Missing speaker notes, transitions, or narrative arc
+- Ideas need research, statistics, or examples to become compelling
+
+**Pipeline stages needed:** Content Development Agent → Editor Agent → Design
+
+### Level 3: Draft Content
+**Indicators:**
+- Has a clear structure with developed sections
+- Key messages are stated and supported with evidence
+- Content is substantial (1500+ words) and reasonably detailed
+- May be a document, report, or article being adapted to slides
+- Needs editing for slide format — tightening language, cutting text, sharpening titles
+- Speaker notes could be derived but need crafting
+
+**Pipeline stages needed:** Editor Agent → Design
+
+### Level 4: Presentation-Ready
+**Indicators:**
+- Content is already in slide-appropriate format (short titles, bullets, clear structure)
+- An existing slide deck being rebuilt or reformatted
+- Content has been through editorial review
+- Speaker notes may already exist
+- Minimal content transformation needed — focus is on design and layout
+
+**Pipeline stages needed:** Design (skip content agents)
+
+## Assessment Process
+
+1. Read the parsed content (`workspace/parsed_content.txt`)
+2. Consider any instructions the user provided about the content state
+3. Evaluate against the maturity level indicators above
+4. If the user explicitly states the content state (e.g., "this is just rough ideas" or "the content is finalized"), honor their assessment
+
+## Output
+
+Write the assessment to `workspace/content_maturity.json`:
+
+```json
+{
+  "maturity_level": 2,
+  "maturity_label": "outline",
+  "reasoning": "The input has section headings and key themes but ideas are listed without supporting evidence. Several sections are just 1-2 sentences. No narrative arc or transitions.",
+  "pipeline_stages": ["content_development", "editor", "design"],
+  "content_gaps": [
+    "Missing data/statistics to support claims about AI adoption",
+    "Technical architecture section is just bullet points — needs elaboration",
+    "No clear narrative arc — sections are disconnected",
+    "No examples or case studies to ground the concepts"
+  ],
+  "strengths": [
+    "Clear topic focus on AI-native commerce",
+    "Good section structure with 8 identifiable themes",
+    "Target audience is well-defined"
+  ],
+  "word_count": 847,
+  "section_count": 8
+}
+```
+
+### Field Descriptions
+
+- `maturity_level` (int, 1-4): The assessed maturity level
+- `maturity_label` (string): One of `"raw_ideas"`, `"outline"`, `"draft"`, `"presentation_ready"`
+- `reasoning` (string): 2-3 sentence explanation of the assessment
+- `pipeline_stages` (list of strings): Which stages to run, in order. Values: `"research"`, `"content_development"`, `"editor"`, `"design"`
+- `content_gaps` (list of strings): What's missing or weak in the current content
+- `strengths` (list of strings): What's already strong in the content
+- `word_count` (int): Approximate word count of the parsed content
+- `section_count` (int): Number of identifiable sections or topics
+
+## User Override
+
+If the user says something like:
+- "This content is ready, just design it" → Set level 4, skip to design
+- "This is a rough draft, flesh it out" → Set level 2, include content_development
+- "Start from this topic and build the whole thing" → Set level 1, include research
+
+Always tell the user what maturity level was assessed and which pipeline stages will run. If the user disagrees, let them override.

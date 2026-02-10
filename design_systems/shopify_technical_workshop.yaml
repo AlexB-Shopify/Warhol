@@ -1,0 +1,53 @@
+name: Shopify Technical Workshop
+fonts:
+  title_font: Inter Tight Light
+  body_font: Inter Tight
+  title_size: 40
+  subtitle_size: 28
+  body_size: 12
+  bullet_size: 12
+  emphasis_font: Inter Tight SemiBold
+  light_font: Inter Tight Light
+  quote_font: Inter Tight Light
+  quote_size: 28
+  data_point_size: 60
+  caption_size: 10
+colors:
+  primary: '#CDF986'
+  secondary: '#191E17'
+  accent: '#F4F4F4'
+  text_dark: '#434343'
+  text_light: '#FFFFF6'
+  background: '#000000'
+paragraph:
+  title_alignment: left
+  body_alignment: left
+  subtitle_alignment: left
+  body_line_spacing: 1.0
+  title_line_spacing: 0.75
+  bullet_character: "\u2022"
+content_area:
+  margin_left: 0.31
+  margin_top: 0.4
+  margin_right: 0.31
+  margin_bottom: 0.5
+  title_left: 0.53
+  title_top: 0.66
+  title_width: 4.21
+  title_height: 1.33
+  body_left: 0.53
+  body_top: 2.2
+  body_width: 8.94
+  body_height: 2.8
+dimensions:
+  width: 10.0
+  height: 5.625
+overrides:
+  section_header_bg: '#000000'
+  data_point_accent: '#CDF986'
+  dark_slide_text: '#FFFFF6'
+  quote_bg: '#000000'
+decoration:
+  divider_line_width: 0.75
+  accent_bar_height: 0.06
+  badge_size: 0.4

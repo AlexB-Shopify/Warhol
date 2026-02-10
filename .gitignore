@@ -1,0 +1,37 @@
+# Virtual environment
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# macOS
+.DS_Store
+
+# Workspace intermediate files (keep .gitkeep)
+workspace/*
+!workspace/.gitkeep
+
+# IDE
+.ruff_cache/
+.pytest_cache/
+
+# Output files
+output/*
+!output/.gitkeep
+*.pptx.tmp
+
+# Input files
+inputs/*
+!inputs/.gitkeep
+
+# Template Files
+templates/*
+!templates/.gitkeep
+
+# Generated registry (regenerate with analyze-templates workflow)
+template_registry.json

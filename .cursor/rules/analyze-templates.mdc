@@ -1,0 +1,93 @@
+---
+description: Workflow for analyzing PPTX template files and building a template registry. Use when the user asks to analyze templates, build a template registry, or prepare templates for use.
+globs:
+alwaysApply: false
+---
+
+# Analyze Templates Workflow
+
+Follow these steps to analyze PPTX template files and build a searchable template registry.
+
+## Prerequisites
+
+- A directory containing `.pptx` files (e.g., `templates/`, `templates/corporate/`)
+- Python environment is set up
+
+## Important: Include the Base Slide Bank
+
+The `templates/base/Shopify - Example Technical Workshop Slide Bank.pptx` contains 179 richly designed slides that are the **primary source** of drop-in candidates. This file MUST be included in the analysis — run the extract step on the entire `templates/` directory (not just subdirectories) to capture it.
+
+## Step 1: Extract Structural Metadata
+
+Run the extraction script on the **entire templates directory** to capture all sources including the base slide bank:
+
+```
+python scripts/analyze_templates.py extract templates/ -o workspace/template_descriptions.json
+```
+
+This extracts placeholder info, shape counts, colors, and fonts from every slide in every PPTX file.
+
+## Step 2: Classify Slide Layouts
+
+Read `workspace/template_descriptions.json`. For each slide in the `slides` array, examine:
+- The `description_for_classification` field (structural metadata AND extracted text content)
+- The `text_content` field (structured title/body/all_text extracted from the slide)
+
+Classify each slide by determining:
+
+1. **slide_type**: The most appropriate type from: `title`, `section_header`, `content`, `two_column`, `bullet_list`, `image_full`, `image_with_text`, `chart`, `quote`, `comparison`, `timeline`, `team`, `closing`
+2. **tags**: Semantic style tags (e.g., `"corporate"`, `"minimal"`, `"bold"`, `"creative"`, `"data-heavy"`, `"visual"`, `"text-heavy"`, `"dark-bg"`, `"branded"`)
+3. **complexity**: Visual complexity on a 1-5 scale (1=very simple, 5=very complex)
+4. **description**: A 2-3 sentence description covering BOTH the layout structure AND the content/topic of the slide. Include what the slide is about, not just its structure.
+5. **content_keywords**: 5-10 topic keywords extracted from the slide's actual text content. These enable semantic matching. Examples: `["revenue", "growth", "Q3", "metrics"]`, `["checkout", "conversion", "funnel"]`, `["team", "leadership", "org chart"]`. If the slide has no text, use keywords that describe the visual content.
+6. **visual_elements**: List of visual elements present on the slide. Examples: `["bar chart"]`, `["process diagram", "icons"]`, `["photo grid"]`, `["branded background", "logo"]`, `["big number", "stat callout"]`, `["screenshot"]`. Use `[]` if the slide is text-only.
+7. **suitable_for**: 2-5 content intent descriptors saying what kind of presentation content this slide would work well for. Examples: `["data presentation", "metrics overview"]`, `["case study", "customer story"]`, `["framework overview", "process explanation"]`, `["section transition", "chapter break"]`, `["opening", "deck introduction"]`.
+
+Base slide_type classification on the STRUCTURE, not the content. But for description, content_keywords, visual_elements, and suitable_for, use BOTH structure and content.
+
+Write the classifications to `workspace/classifications.json` in this format:
+
+```json
+{
+  "classifications": [
+    {
+      "slide_type": "title",
+      "tags": ["corporate", "bold", "branded"],
+      "complexity": 2,
+      "description": "Branded title slide with Shopify visual treatment. Large centered title with subtitle below, dark background with product imagery. Suitable for opening a workshop or technical presentation.",
+      "content_keywords": ["shopify", "workshop", "technical", "introduction"],
+      "visual_elements": ["branded background", "product imagery", "logo"],
+      "suitable_for": ["opening", "deck introduction", "workshop kickoff"]
+    },
+    {
+      "slide_type": "content",
+      "tags": ["corporate", "data-heavy", "complex"],
+      "complexity": 4,
+      "description": "Data-rich content slide about checkout conversion metrics. Contains a bar chart showing conversion rates across channels, with supporting callout stats. Dark branded background.",
+      "content_keywords": ["checkout", "conversion", "metrics", "channels", "funnel", "rates"],
+      "visual_elements": ["bar chart", "stat callouts", "branded background"],
+      "suitable_for": ["data presentation", "metrics overview", "performance analysis"]
+    }
+  ]
+}
+```
+
+The array must have exactly as many entries as there are slides in the descriptions file.
+
+## Step 3: Merge into Template Registry
+
+Run the merge script:
+
+```
+python scripts/analyze_templates.py merge workspace/template_descriptions.json workspace/classifications.json -o template_registry.json
+```
+
+This combines the structural metadata with your classifications and deduplicates similar layouts.
+
+## Step 4: Report Results
+
+Tell the user:
+- How many files were analyzed
+- How many unique layouts were found
+- A summary of slide types in the registry
+- The path to the generated `template_registry.json`
