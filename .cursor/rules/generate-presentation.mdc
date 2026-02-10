@@ -47,10 +47,10 @@ The maturity level determines which of the following steps to execute:
 
 | Level | Label | Pipeline |
 |---|---|---|
-| 1 | Raw ideas | Step 3 → Step 4 → Step 5 → Step 6 → Step 8 → Step 9 → Step 9.5 → Step 10 → Step 11 |
-| 2 | Outline | Step 3 → Step 5 → Step 6 → Step 8 → Step 9 → Step 9.5 → Step 10 → Step 11 |
-| 3 | Draft | Step 3 → Step 6 → Step 8 → Step 9 → Step 9.5 → Step 10 → Step 11 |
-| 4 | Ready | Step 3 → Step 7 → Step 8 → Step 9 → Step 9.5 → Step 10 → Step 11 |
+| 1 | Raw ideas | Step 3 → Step 4 → Step 5 → Step 6 → Step 8 → Step 9 → Step 9.5 → Step 9.7 → Step 10 → Step 11 |
+| 2 | Outline | Step 3 → Step 5 → Step 6 → Step 8 → Step 9 → Step 9.5 → Step 9.7 → Step 10 → Step 11 |
+| 3 | Draft | Step 3 → Step 6 → Step 8 → Step 9 → Step 9.5 → Step 9.7 → Step 10 → Step 11 |
+| 4 | Ready | Step 3 → Step 7 → Step 8 → Step 9 → Step 9.5 → Step 9.7 → Step 10 → Step 11 |
 
 ## Step 3: Extract Content Inventory
 
@@ -153,7 +153,33 @@ If no template registry exists, skip this step — the builder will use branded 
 python scripts/validate_schema.py workspace/template_matches.json MatchResult
 ```
 
-## Step 9.5: Design Optimization (Optional)
+## Step 9.5: Content Density Assessment & Spreading
+
+Run the content density assessment to identify over-dense slides:
+
+```
+python scripts/assess_content_density.py workspace/deck_schema.json workspace/template_matches.json template_registry.json -o workspace/density_report.json
+```
+
+Review the density report. If any slides are flagged as `spread_candidate`, run the content spreader to split them:
+
+```
+python scripts/spread_content.py workspace/deck_schema.json workspace/density_report.json -o workspace/deck_schema.json
+```
+
+If slides were split, **re-run template matching** for the new slides:
+
+```
+python scripts/match_templates.py workspace/deck_schema.json template_registry.json -o workspace/template_matches.json
+```
+
+And re-validate:
+
+```
+python scripts/validate_schema.py workspace/deck_schema.json DeckSchema
+```
+
+## Step 9.7: Design Optimization
 
 Follow the guidance in the **design-optimization** rule.
 
@@ -163,6 +189,7 @@ For each slide that was matched to a template, review the template's content zon
 - Adjust bullet count to match template capacity
 - Trim text length to fit content zones
 - Ensure speaker notes contain the full narrative detail
+- Set `visual_profile` to match each template's visual character
 
 Write the optimized deck schema back to `workspace/deck_schema.json`.
 
@@ -223,6 +250,14 @@ Input Document
     │
     ▼
 [Template Matching] ──► template_matches.json (clone-and-replace targets)
+    │
+    ▼
+[Content Density] ──► density_report.json (flags over-dense slides)
+    │
+    ├── spread_candidates ──► [Content Spreading] ──► deck_schema.json (expanded)
+    │                                │
+    │                                ▼
+    │                         [Re-match Templates] ──► template_matches.json
     │
     ▼
 [Design Optimization] ──► deck_schema.json (content fitted to templates)

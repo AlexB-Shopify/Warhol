@@ -3,11 +3,14 @@
 
 Produces a ranked match for each slide in the deck schema using a weighted scoring
 function that combines:
-  1. Slide type compatibility  (30%)
-  2. Content/keyword similarity (30%)
-  3. Structural compatibility   (20%)
-  4. Visual richness alignment  (10%)
-  5. Tag overlap                (10%)
+  1. Slide type compatibility    (12%)
+  2. Content/keyword similarity  (8%)
+  3. Structural compatibility    (30%)
+  4. Visual richness alignment   (25%)
+  5. Tag overlap                 (10%)
+  6. Content capacity fit        (15%)
+  + Image relevance penalty      (additive)
+  + Consistency groups for section headers and bookend slides
 
 Usage:
     python scripts/match_templates.py workspace/deck_schema.json template_registry.json \
@@ -58,6 +61,21 @@ _INCOMPATIBLE_FILES = {
 
 # Target: slides from the Workshop Slide Bank get a small preference boost
 _PREFERRED_SOURCE = "Shopify - Example Technical Workshop Slide Bank"
+
+# -----------------------------------------------------------------------
+# Consistency groups — slide types that should use the same template
+# throughout a deck for visual coherence
+# -----------------------------------------------------------------------
+
+_CONSISTENCY_GROUPS: dict[str, str] = {
+    # key = slide type, value = group name
+    "section_header": "section_header",
+    "title": "bookend",
+    "closing": "bookend",
+}
+
+# Capacity ordinal for comparison
+_CAPACITY_ORDINAL = {"low": 0, "medium": 1, "high": 2}
 
 
 # -----------------------------------------------------------------------
@@ -191,6 +209,73 @@ def _score_content_similarity(
         return -0.2 * text_weight  # Negative score = actively harmful match
 
     return precision * (1.0 - 0.3 * text_weight)  # Dampen score for text-heavy slides
+
+
+def _estimate_content_volume(deck_slide: SlideSpec) -> int:
+    """Estimate the total character count of a deck slide's content."""
+    total = len(deck_slide.title or "")
+    total += len(deck_slide.subtitle or "")
+    for block in deck_slide.content_blocks:
+        total += len(block.content)
+    return total
+
+
+def _score_content_capacity_fit(
+    deck_slide: SlideSpec,
+    template: TemplateSlide,
+) -> float:
+    """Score how well the deck slide's content volume fits the template capacity (0.0 - 1.0).
+
+    A text-heavy slide matched to a low-capacity (image-heavy) template produces
+    bare-looking output. Conversely, a single-line slide on a high-capacity template
+    wastes space. This score penalises both mismatches.
+    """
+    content_blocks = len(deck_slide.content_blocks)
+    char_count = _estimate_content_volume(deck_slide)
+    tmpl_cap = _CAPACITY_ORDINAL.get(template.content_capacity, 1)
+
+    # Estimate deck slide's "needed capacity": low / medium / high
+    if content_blocks <= 1 and char_count < 100:
+        needed_cap = 0  # low
+    elif content_blocks <= 3 and char_count < 400:
+        needed_cap = 1  # medium
+    else:
+        needed_cap = 2  # high
+
+    diff = abs(needed_cap - tmpl_cap)
+    if diff == 0:
+        return 1.0
+    elif diff == 1:
+        return 0.6
+    else:
+        # e.g. high-content slide → low-capacity template: very poor fit
+        return 0.15
+
+
+def _score_image_relevance(
+    deck_slide: SlideSpec,
+    template: TemplateSlide,
+) -> float:
+    """Penalise matching content-image templates to slides that don't need images.
+
+    Returns a penalty value (0.0 = no penalty, negative = penalty).
+    """
+    image_type = getattr(template, "image_type", "none")
+    if image_type != "content":
+        return 0.0  # No penalty for decorative or no images
+
+    # Content images should only match slides that request images
+    has_image_hints = bool(deck_slide.image_suggestions)
+    is_image_slide = deck_slide.slide_type.value in ("image_full", "image_with_text")
+
+    if has_image_hints or is_image_slide:
+        return 0.0  # Good match — slide wants images
+
+    # Template has content images but slide doesn't want them — penalise
+    image_count = getattr(template, "image_count", 0)
+    if image_count >= 4:
+        return -0.15  # Heavy image template, strong penalty
+    return -0.08  # Moderate penalty
 
 
 def _score_structural_fit(
@@ -371,6 +456,8 @@ def score_template_for_slide(
     struct_score = _score_structural_fit(deck_slide, template)
     visual_score = _score_visual_alignment(deck_slide, template)
     tag_score = _score_tag_overlap(deck_slide, template)
+    capacity_score = _score_content_capacity_fit(deck_slide, template)
+    image_penalty = _score_image_relevance(deck_slide, template)
 
     # Hard gate: if content score is negative, the template's text actively
     # conflicts with the deck slide's topic — reject this match
@@ -383,13 +470,18 @@ def score_template_for_slide(
         }
 
     # Weighted total — structural fit and visual alignment are key for clone-and-replace
+    # Content capacity added to ensure templates can hold the content
     total = (
-        0.15 * type_score
-        + 0.10 * content_score
-        + 0.35 * struct_score
-        + 0.30 * visual_score
+        0.12 * type_score
+        + 0.08 * content_score
+        + 0.30 * struct_score
+        + 0.25 * visual_score
         + 0.10 * tag_score
+        + 0.15 * capacity_score
     )
+
+    # Image relevance penalty (applied as additive adjustment)
+    total += image_penalty
 
     # Preferred source bonus
     if _PREFERRED_SOURCE.lower() in template.template_file.lower():
@@ -414,6 +506,8 @@ def score_template_for_slide(
         "struct_score": round(struct_score, 3),
         "visual_score": round(visual_score, 3),
         "tag_score": round(tag_score, 3),
+        "capacity_score": round(capacity_score, 3),
+        "image_penalty": round(image_penalty, 3),
         "rejected": False,
     }
 
@@ -435,6 +529,10 @@ def match_all(
     is deliberately low because even a loosely-matching template with branded
     visuals is better than a blank-canvas compose.
 
+    Consistency groups ensure that slide types like section_header and
+    title/closing all use the same template throughout the deck for visual
+    coherence.
+
     Returns a list of match dicts compatible with the existing MatchResult schema.
     """
     total_slides = len(deck_schema.slides)
@@ -452,7 +550,37 @@ def match_all(
         candidates.sort(key=lambda c: c["total_score"], reverse=True)
         slide_candidates.append(candidates)
 
-    # Greedy assignment: every slide tries to get a template match
+    # ------------------------------------------------------------------
+    # Pass 1: Determine the best template for each consistency group.
+    # For each group, we pick the template that has the highest average
+    # score across all slides in that group.
+    # ------------------------------------------------------------------
+    group_slide_indices: dict[str, list[int]] = {}  # group_name → [slide index]
+    for i, slide_spec in enumerate(deck_schema.slides):
+        group = _CONSISTENCY_GROUPS.get(slide_spec.slide_type.value)
+        if group:
+            group_slide_indices.setdefault(group, []).append(i)
+
+    group_template: dict[str, int] = {}  # group_name → template_index
+    for group, indices in group_slide_indices.items():
+        if len(indices) < 2:
+            continue  # No consistency needed for a single slide
+        # Aggregate scores: for each template, compute average score across group slides
+        tmpl_scores: dict[int, float] = {}
+        for si in indices:
+            for cand in slide_candidates[si]:
+                tidx = cand["template_index"]
+                tmpl_scores[tidx] = tmpl_scores.get(tidx, 0.0) + cand["total_score"]
+        if tmpl_scores:
+            # Average and pick the best
+            best_tidx = max(tmpl_scores, key=lambda t: tmpl_scores[t] / len(indices))
+            avg = tmpl_scores[best_tidx] / len(indices)
+            if avg >= threshold:
+                group_template[group] = best_tidx
+
+    # ------------------------------------------------------------------
+    # Pass 2: Greedy assignment with consistency group enforcement.
+    # ------------------------------------------------------------------
     matches = []
     used_templates: set[int] = set()
     dropin_count = 0
@@ -461,37 +589,62 @@ def match_all(
         candidates = slide_candidates[i]
         best = None
 
-        # Try to find a good match (prefer unused templates for variety)
-        for cand in candidates:
-            if cand["template_index"] in used_templates:
-                continue
-            if cand["total_score"] >= threshold and dropin_count < max_dropins:
-                best = cand
-                break
+        # Check if this slide belongs to a consistency group with a locked template
+        group = _CONSISTENCY_GROUPS.get(slide_spec.slide_type.value)
+        locked_tidx = group_template.get(group) if group else None
 
-        # If no unused match found above threshold, allow reuse of templates
-        if not best:
+        if locked_tidx is not None:
+            # Use the group template — find its score for this slide
             for cand in candidates:
-                if cand["total_score"] >= threshold:
+                if cand["template_index"] == locked_tidx:
+                    # Accept unless the score is catastrophically low (>60% drop from best)
+                    best_possible = candidates[0]["total_score"] if candidates else 0
+                    if cand["total_score"] >= threshold or (
+                        best_possible > 0 and cand["total_score"] >= 0.4 * best_possible
+                    ):
+                        best = cand
+                    break
+            # If the locked template wasn't even in the candidate list (rejected),
+            # fall through to normal matching
+
+        if not best:
+            # Normal matching: prefer unused templates for variety
+            for cand in candidates:
+                if cand["template_index"] in used_templates:
+                    continue
+                if cand["total_score"] >= threshold and dropin_count < max_dropins:
                     best = cand
                     break
+
+            # If no unused match found above threshold, allow reuse of templates
+            if not best:
+                for cand in candidates:
+                    if cand["total_score"] >= threshold:
+                        best = cand
+                        break
 
         if best:
             tmpl = registry.templates[best["template_index"]]
             source_name = Path(tmpl.template_file).stem
+            is_group_match = locked_tidx is not None and best["template_index"] == locked_tidx
+            reasoning = (
+                f"Template index {best['template_index']} "
+                f"(slide_index {tmpl.slide_index}) — "
+                f"{tmpl.description or tmpl.slide_type.value} "
+                f"[type={best['type_score']}, content={best['content_score']}, "
+                f"struct={best['struct_score']}, visual={best['visual_score']}, "
+                f"capacity={best.get('capacity_score', 'n/a')}]. "
+                f"Source: {source_name}"
+            )
+            if is_group_match:
+                reasoning += f" (consistency group: {group})"
+
             matches.append({
                 "slide_number": slide_spec.slide_number,
                 "match_type": "use_as_is",
                 "template_index": best["template_index"],
                 "confidence": round(best["total_score"], 2),
-                "reasoning": (
-                    f"Template index {best['template_index']} "
-                    f"(slide_index {tmpl.slide_index}) — "
-                    f"{tmpl.description or tmpl.slide_type.value} "
-                    f"[type={best['type_score']}, content={best['content_score']}, "
-                    f"struct={best['struct_score']}, visual={best['visual_score']}]. "
-                    f"Source: {source_name}"
-                ),
+                "reasoning": reasoning,
                 "modifications": [],
             })
             used_templates.add(best["template_index"])

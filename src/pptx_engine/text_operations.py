@@ -501,3 +501,60 @@ def _hex_to_rgb(hex_color: str) -> RGBColor:
         int(hex_color[2:4], 16),
         int(hex_color[4:6], 16),
     )
+
+
+# ---------------------------------------------------------------------------
+# Font sizing utilities
+# ---------------------------------------------------------------------------
+
+def estimate_fit_font_size(
+    text: str,
+    shape_width_inches: float,
+    shape_height_inches: float,
+    max_font_pt: float = 44.0,
+    min_font_pt: float = 10.0,
+) -> float:
+    """Estimate the largest font size (pt) at which text fits a shape.
+
+    Uses a simple character-per-line heuristic (not pixel-perfect, but
+    prevents gross overflows). Assumes roughly 1.0 characters per point
+    of width, and 1.3x font size per line height.
+
+    Args:
+        text: The text to fit.
+        shape_width_inches: Available width in inches.
+        shape_height_inches: Available height in inches.
+        max_font_pt: Maximum font size to consider.
+        min_font_pt: Minimum font size (floor).
+
+    Returns:
+        Recommended font size in points.
+    """
+    if not text or shape_width_inches <= 0 or shape_height_inches <= 0:
+        return max_font_pt
+
+    # Try sizes from max down to min
+    for size_pt in range(int(max_font_pt), int(min_font_pt) - 1, -1):
+        # Approximate chars per line at this font size
+        # At 12pt, roughly 9 chars per inch of width; scales inversely
+        chars_per_inch = max(1.0, 9.0 * (12.0 / size_pt))
+        chars_per_line = int(shape_width_inches * chars_per_inch)
+        if chars_per_line < 1:
+            continue
+
+        # Line height ≈ 1.3x font size in inches
+        line_height_inches = size_pt / 72.0 * 1.3
+        max_lines = max(1, int(shape_height_inches / line_height_inches))
+
+        # Estimate lines needed (word-wrap simulation)
+        lines_needed = 0
+        for paragraph in text.split("\n"):
+            if not paragraph.strip():
+                lines_needed += 1
+                continue
+            lines_needed += max(1, -(-len(paragraph) // chars_per_line))  # ceil division
+
+        if lines_needed <= max_lines:
+            return float(size_pt)
+
+    return min_font_pt

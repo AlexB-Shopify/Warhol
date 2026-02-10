@@ -52,6 +52,27 @@ For each slide, ensure the `visual_profile` field is set in the deck schema to m
 - `"branded_image"` — image-heavy backgrounds (visual slides)
 - `"minimal"` — clean, sparse layouts
 
+### 5. Assess Content Density (Programmatic)
+
+Before manual optimization, run the content density assessment:
+
+```
+python scripts/assess_content_density.py workspace/deck_schema.json workspace/template_matches.json template_registry.json -o workspace/density_report.json
+```
+
+Review the report. For slides flagged as `spread_candidate`, decide whether to:
+- **Split**: Run the content spreader to automatically split over-dense slides:
+  ```
+  python scripts/spread_content.py workspace/deck_schema.json workspace/density_report.json -o workspace/deck_schema.json
+  ```
+  Then re-run template matching for the new slides:
+  ```
+  python scripts/match_templates.py workspace/deck_schema.json template_registry.json -o workspace/template_matches.json
+  ```
+- **Trim**: Manually reduce content and push detail to speaker notes
+
+For slides flagged as `dense`, trim content to fit the template capacity — move overflow to speaker notes.
+
 ## Output
 
 Write the optimized deck schema back to `workspace/deck_schema.json`.

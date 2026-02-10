@@ -103,6 +103,18 @@ class TemplateSlide(BaseModel):
         default="medium",
         description="How much text content this slide can hold",
     )
+    image_type: Literal["none", "decorative", "content"] = Field(
+        default="none",
+        description=(
+            "Image classification: 'none' = no images, "
+            "'decorative' = branded backgrounds/logos/accents (safe to keep on clone), "
+            "'content' = product shots/screenshots/photos (irrelevant when cloned for different content)"
+        ),
+    )
+    image_count: int = Field(
+        default=0,
+        description="Number of picture shapes on the slide",
+    )
 
 
 class TemplateRegistry(BaseModel):

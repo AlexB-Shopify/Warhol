@@ -57,13 +57,30 @@ If reading the titles feels disjointed, restructure.
 
 ### 4. Calibrate Density
 
-- Title and closing slides: minimal text, maximum impact
-- Section headers: breathing room, signal the shift
-- Content slides: 3-5 bullets max, 6 words each (see author rule)
-- Data slides: one key number + one context sentence
-- Quote slides: one quote + attribution
+Every slide type has a capacity limit that matches what template layouts can hold. Exceeding these produces overcrowded slides with tiny text or overflowing content.
 
-Don't try to cram everything. If a section has too much content for one slide, split it.
+**Hard limits per slide type:**
+
+| Slide Type | Max Blocks | Max Chars | Notes |
+|---|---|---|---|
+| title, closing | 2 | 150 | Minimal text, maximum impact |
+| section_header | 2 | 100 | Breathing room, signal the shift |
+| content | 4 | 500 | 3-5 bullets max, 6 words each |
+| bullet_list | 6 | 400 | 4 bullets preferred (6 absolute max) |
+| two_column | 6 | 600 | 3 items per column |
+| data_point | 2 | 150 | One key number + one context sentence |
+| quote | 2 | 200 | One quote + attribution |
+| image_full | 1 | 80 | Title only — the image IS the content |
+| image_with_text | 3 | 300 | Brief text alongside the visual |
+
+**When you exceed these limits, split the slide:**
+
+- **6+ bullets** → Split into two slides (4 + remaining), or promote the strongest bullet to a separate slide's title
+- **500+ chars on a content slide** → Move supporting detail to speaker notes, or split into two content slides
+- **A topic with multiple facets** → Give each facet its own slide rather than cramming all into one
+- **Title is >60 characters** → Shorten it. Move the detail to a subtitle or speaker notes.
+
+Don't try to cram everything onto one slide. If a section has too much content for one slide, split it into two or three slides. More slides with focused content is always better than fewer slides with overcrowded content.
 
 ## Output
 

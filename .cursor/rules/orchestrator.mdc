@@ -58,10 +58,12 @@ If the request is ambiguous, ask the user which workflow they intend.
 
 The generate-presentation workflow includes a **content maturity assessment** that determines how much content processing the input needs. The pipeline adapts automatically:
 
-- **Level 1 (raw ideas)** → Research Agent → Content Development → Editor → Design
-- **Level 2 (outline)** → Content Development → Editor → Design
-- **Level 3 (draft)** → Editor → Design
-- **Level 4 (presentation-ready)** → Design only
+- **Level 1 (raw ideas)** → Research Agent → Content Development → Editor → Template Match → Density Check → Design Optimization → Build
+- **Level 2 (outline)** → Content Development → Editor → Template Match → Density Check → Design Optimization → Build
+- **Level 3 (draft)** → Editor → Template Match → Density Check → Design Optimization → Build
+- **Level 4 (presentation-ready)** → Narrative Architecture → Template Match → Density Check → Design Optimization → Build
+
+The **Density Check** step (Step 9.5) runs `assess_content_density.py` to flag over-dense slides, then `spread_content.py` to split them if needed. After spreading, template matching re-runs for the new slides.
 
 Always report the assessed maturity level to the user and let them override if they disagree. If the user says "flesh this out" or "this is just rough ideas", factor that into the assessment.
 

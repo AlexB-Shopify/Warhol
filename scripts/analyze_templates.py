@@ -334,6 +334,78 @@ def _detect_visual_profile(slide, has_images: bool, has_background: bool, bg_typ
         return "minimal"
 
 
+def _classify_images(slide, image_count: int, bg_type: str) -> str:
+    """Classify images on a slide as 'none', 'decorative', or 'content'.
+
+    Heuristic:
+    - 'none' if no images at all
+    - 'decorative' if the slide has a background image or only 1-2 small images
+      (likely logos/accents) or if images are near edges (header/footer areas)
+    - 'content' if there are 3+ picture shapes or large centered images
+      (likely product shots, screenshots, photos that won't make sense when cloned)
+    """
+    if image_count == 0:
+        return "none"
+
+    # If the only "image" is the background, it's decorative
+    if bg_type == "image" and image_count <= 1:
+        return "decorative"
+
+    # Count picture shapes and assess their sizes / positions
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+
+    large_images = 0
+    center_images = 0
+    try:
+        slide_w = slide.part.package.presentation.slide_width / 914400
+        slide_h = slide.part.package.presentation.slide_height / 914400
+    except Exception:
+        slide_w, slide_h = 10.0, 5.625
+
+    for shape in slide.shapes:
+        try:
+            if shape.shape_type != MSO_SHAPE_TYPE.PICTURE:
+                continue
+        except Exception:
+            continue
+
+        w = (shape.width / 914400) if shape.width else 0
+        h = (shape.height / 914400) if shape.height else 0
+        left = (shape.left / 914400) if shape.left else 0
+        top = (shape.top / 914400) if shape.top else 0
+
+        area = w * h
+        if area > 3.0:
+            large_images += 1
+        # Check if image is roughly centered (not a corner logo)
+        cx = left + w / 2
+        cy = top + h / 2
+        if 0.2 * slide_w < cx < 0.8 * slide_w and 0.2 * slide_h < cy < 0.8 * slide_h:
+            center_images += 1
+
+    # 3+ images or 2+ large centered images → content images
+    if image_count >= 3 or (large_images >= 2 and center_images >= 2):
+        return "content"
+
+    return "decorative"
+
+
+def _count_images(slide) -> int:
+    """Count the number of picture shapes on a slide."""
+    count = 0
+    try:
+        from pptx.enum.shapes import MSO_SHAPE_TYPE
+        for shape in slide.shapes:
+            try:
+                if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+                    count += 1
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return count
+
+
 def _calculate_content_capacity(content_zones: list[dict]) -> str:
     """Calculate how much text a slide can hold based on its content zones."""
     total_area = 0
@@ -468,6 +540,10 @@ def extract_metadata(template_dir: Path, output_path: Path):
                 )
                 content_capacity = _calculate_content_capacity(content_zones)
 
+                # Image classification
+                image_count = _count_images(slide)
+                image_type = _classify_images(slide, image_count, background_type)
+
                 description = _build_slide_description(
                     idx, placeholders, shape_count, has_images, layout_name,
                     text_content=text_content,
@@ -488,6 +564,8 @@ def extract_metadata(template_dir: Path, output_path: Path):
                     "background_type": background_type,
                     "visual_profile": visual_profile,
                     "content_capacity": content_capacity,
+                    "image_type": image_type,
+                    "image_count": image_count,
                     "description_for_classification": description,
                 })
 
@@ -579,6 +657,8 @@ def merge_classifications(descriptions_path: Path, classifications_path: Path, o
             background_type=slide_data.get("background_type", "none"),
             visual_profile=slide_data.get("visual_profile", "minimal"),
             content_capacity=slide_data.get("content_capacity", "medium"),
+            image_type=slide_data.get("image_type", "none"),
+            image_count=slide_data.get("image_count", 0),
         )
         templates.append(template)
 

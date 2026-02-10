@@ -24,6 +24,7 @@ from src.pptx_engine.slide_operations import (
     open_base_template,
     create_presentation,
 )
+from src.pptx_engine.text_operations import estimate_fit_font_size
 
 logger = logging.getLogger(__name__)
 
@@ -164,17 +165,39 @@ class SlideBuilderAgent:
             if not shape or not shape.has_text_frame:
                 continue
 
+            # Extract font size range from zone metadata
+            font_range = None
+            if hasattr(zone, "font_size_range"):
+                font_range = zone.font_size_range
+            elif isinstance(zone, dict):
+                font_range = zone.get("font_size_range")
+
+            size_kwargs = {}
+            if font_range and len(font_range) == 2:
+                size_kwargs["min_font_pt"] = font_range[0]
+                size_kwargs["max_font_pt"] = font_range[1]
+
+            # Extract max_chars for truncation
+            max_chars = None
+            if hasattr(zone, "max_chars"):
+                max_chars = zone.max_chars
+            elif isinstance(zone, dict):
+                max_chars = zone.get("max_chars")
+
             if zone_type == "title" and title_text:
-                self._replace_shape_text(shape, title_text)
+                text = self._truncate_to_fit(title_text, max_chars)
+                self._replace_shape_text(shape, text, **size_kwargs)
                 mapped_names.add(shape_name)
             elif zone_type == "subtitle" and subtitle_text:
-                self._replace_shape_text(shape, subtitle_text)
+                text = self._truncate_to_fit(subtitle_text, max_chars)
+                self._replace_shape_text(shape, text, **size_kwargs)
                 mapped_names.add(shape_name)
             elif zone_type == "data_point" and data_text:
-                self._replace_shape_text(shape, data_text)
+                self._replace_shape_text(shape, data_text, **size_kwargs)
                 mapped_names.add(shape_name)
             elif zone_type in ("body", "bullet_area", "caption") and body_text:
-                self._replace_shape_text(shape, body_text)
+                text = self._truncate_to_fit(body_text, max_chars)
+                self._replace_shape_text(shape, text, **size_kwargs)
                 mapped_names.add(shape_name)
 
         # Clear ALL unmapped text shapes to remove stale template text
@@ -257,10 +280,18 @@ class SlideBuilderAgent:
         # --- Map deck content to shapes ---
         mapped_ids: set[int] = set()
 
+        # Design system guardrails for font size clamping
+        title_max_pt = design.fonts.title_size or 44
+        body_max_pt = design.fonts.body_size or 18
+        subtitle_max_pt = design.fonts.subtitle_size or 28
+
         # Title → first content shape (largest font / topmost)
         if title_text and content_shapes:
             target = content_shapes[0]
-            self._replace_shape_text(target["shape"], title_text)
+            self._replace_shape_text(
+                target["shape"], title_text,
+                max_font_pt=title_max_pt, min_font_pt=14,
+            )
             mapped_ids.add(id(target["shape"]))
 
         remaining = [s for s in content_shapes if id(s["shape"]) not in mapped_ids]
@@ -268,14 +299,22 @@ class SlideBuilderAgent:
         # Subtitle → next available content shape (if subtitle exists)
         if subtitle_text and remaining:
             target = remaining[0]
-            self._replace_shape_text(target["shape"], subtitle_text)
+            self._replace_shape_text(
+                target["shape"], subtitle_text,
+                max_font_pt=subtitle_max_pt, min_font_pt=12,
+            )
             mapped_ids.add(id(target["shape"]))
             remaining = [s for s in remaining if id(s["shape"]) not in mapped_ids]
 
         # Data point → next available if we have one
         if data_text and remaining:
             target = remaining[0]
-            self._replace_shape_text(target["shape"], data_text)
+            # Data points can be large — allow up to design system's data_point size
+            dp_max = design.data_point_size_resolved or 60
+            self._replace_shape_text(
+                target["shape"], data_text,
+                max_font_pt=dp_max, min_font_pt=20,
+            )
             mapped_ids.add(id(target["shape"]))
             remaining = [s for s in remaining if id(s["shape"]) not in mapped_ids]
 
@@ -285,7 +324,10 @@ class SlideBuilderAgent:
             body_lines = body_text.split("\n\n")
             for i, target in enumerate(remaining):
                 if i < len(body_lines):
-                    self._replace_shape_text(target["shape"], body_lines[i])
+                    self._replace_shape_text(
+                        target["shape"], body_lines[i],
+                        max_font_pt=body_max_pt, min_font_pt=10,
+                    )
                 else:
                     # Ran out of content blocks — clear this shape
                     self._clear_shape_text(target["shape"])
@@ -301,11 +343,22 @@ class SlideBuilderAgent:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _replace_shape_text(shape, new_text: str) -> None:
+    def _replace_shape_text(
+        shape,
+        new_text: str,
+        *,
+        min_font_pt: float | None = None,
+        max_font_pt: float | None = None,
+    ) -> None:
         """Replace ALL text in a shape, preserving first-run formatting.
 
         Clears every paragraph (not just the first), then sets the new
         text on paragraph 1. Handles theme colors gracefully.
+
+        Optional font size guardrails:
+        - min_font_pt / max_font_pt: clamp the preserved font size to a range
+        - Auto-fit: if the new text is significantly longer than the shape
+          can hold at the current font size, reduce the size to fit
         """
         tf = shape.text_frame
         if not tf.paragraphs:
@@ -330,6 +383,33 @@ class SlideBuilderAgent:
                 "italic": run.font.italic,
                 "color": color_rgb,
             }
+
+        # --- Clamp font size to requested range ---
+        if font_props.get("size"):
+            from pptx.util import Pt
+            current_pt = font_props["size"].pt
+            clamped_pt = current_pt
+            if max_font_pt is not None and clamped_pt > max_font_pt:
+                clamped_pt = max_font_pt
+            if min_font_pt is not None and clamped_pt < min_font_pt:
+                clamped_pt = min_font_pt
+
+            # Auto-fit: estimate if text fits at current size, reduce if needed
+            try:
+                shape_w = (shape.width / 914400) if shape.width else 0
+                shape_h = (shape.height / 914400) if shape.height else 0
+                if shape_w > 0 and shape_h > 0:
+                    fit_pt = estimate_fit_font_size(
+                        new_text, shape_w, shape_h,
+                        max_font_pt=clamped_pt,
+                        min_font_pt=min_font_pt or 10.0,
+                    )
+                    clamped_pt = min(clamped_pt, fit_pt)
+            except Exception:
+                pass  # If estimation fails, keep the clamped size
+
+            if clamped_pt != current_pt:
+                font_props["size"] = Pt(clamped_pt)
 
         # --- Clear ALL paragraphs beyond the first ---
         p_elements = list(tf._element)
@@ -387,6 +467,28 @@ class SlideBuilderAgent:
             shape.left = Emu(914400 * 20)  # 20 inches off-screen right
         except Exception:
             pass
+
+    # ------------------------------------------------------------------
+    # Text truncation
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _truncate_to_fit(text: str, max_chars: int | None) -> str:
+        """Truncate text to fit within a zone's max_chars capacity.
+
+        Tries to break at word boundaries. Appends an ellipsis when
+        truncation occurs.
+        """
+        if max_chars is None or max_chars <= 0 or len(text) <= max_chars:
+            return text
+
+        # Truncate at word boundary
+        truncated = text[:max_chars]
+        last_space = truncated.rfind(" ")
+        if last_space > max_chars * 0.6:
+            truncated = truncated[:last_space]
+
+        return truncated.rstrip() + "..."
 
     # ------------------------------------------------------------------
     # Content extraction helpers

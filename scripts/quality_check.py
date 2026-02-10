@@ -21,6 +21,66 @@ from pptx.util import Pt
 from src.schemas.design_system import DesignSystem
 
 
+def _hex_luminance(hex_color: str) -> float:
+    """Calculate relative luminance of a hex color (0.0 = black, 1.0 = white)."""
+    hex_color = hex_color.lstrip("#")
+    if len(hex_color) < 6:
+        return 0.5  # Unknown
+    try:
+        r = int(hex_color[0:2], 16) / 255
+        g = int(hex_color[2:4], 16) / 255
+        b = int(hex_color[4:6], 16) / 255
+        return 0.299 * r + 0.587 * g + 0.114 * b
+    except (ValueError, IndexError):
+        return 0.5
+
+
+def _is_slide_background_dark(slide) -> bool | None:
+    """Determine if a slide's effective background is dark.
+
+    Checks slide-level background first, then layout, then master.
+    Returns True (dark), False (light), or None (can't determine).
+    """
+    try:
+        from lxml import etree
+
+        ns_p = "http://schemas.openxmlformats.org/presentationml/2006/main"
+        ns_a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+
+        # Check slide-level background
+        bg_elem = slide.background._element if slide.background else None
+        if bg_elem is not None and len(bg_elem) > 0:
+            color = _extract_bg_color(bg_elem, ns_p, ns_a)
+            if color is not None:
+                return _hex_luminance(color) < 0.4
+
+        # Check layout-level background
+        try:
+            layout = slide.slide_layout
+            if layout:
+                layout_xml = layout._element
+                for bg in layout_xml.iter(f"{{{ns_p}}}bg"):
+                    color = _extract_bg_color(bg, ns_p, ns_a)
+                    if color is not None:
+                        return _hex_luminance(color) < 0.4
+        except Exception:
+            pass
+
+        return None  # Can't determine
+
+    except Exception:
+        return None
+
+
+def _extract_bg_color(bg_elem, ns_p: str, ns_a: str) -> str | None:
+    """Extract a hex color string from a background element, if it has a solid fill."""
+    for bgPr in bg_elem.iter(f"{{{ns_p}}}bgPr"):
+        for solid in bgPr.iter(f"{{{ns_a}}}solidFill"):
+            for srgb in solid.iter(f"{{{ns_a}}}srgbClr"):
+                return srgb.get("val")
+    return None
+
+
 def run_programmatic_checks(prs: Presentation, design_system: DesignSystem | None) -> list[dict]:
     """Run programmatic quality checks on the presentation."""
     issues = []
@@ -96,6 +156,114 @@ def run_programmatic_checks(prs: Presentation, design_system: DesignSystem | Non
                     "description": f"Unexpected fonts: {', '.join(unexpected)}",
                     "suggestion": f"Use {' or '.join(sorted(expected_fonts))} for consistency",
                 })
+
+    # Shape-to-shape overlap check
+    for slide_idx, slide in enumerate(prs.slides, 1):
+        visible_shapes = []
+        for shape in slide.shapes:
+            if shape.left is None or shape.top is None:
+                continue
+            if shape.width is None or shape.height is None:
+                continue
+            # Skip shapes moved off-canvas (cleared shapes at 20" right)
+            left_inches = shape.left / 914400
+            if left_inches > 15:
+                continue
+            # Skip very small decorative shapes (badges, dots, lines)
+            w_inches = shape.width / 914400
+            h_inches = shape.height / 914400
+            if w_inches * h_inches < 0.3:
+                continue
+            # Only check shapes with text content (most likely to cause readability issues)
+            if not shape.has_text_frame or not shape.text_frame.text.strip():
+                continue
+
+            visible_shapes.append({
+                "name": shape.name,
+                "left": shape.left,
+                "top": shape.top,
+                "right": shape.left + shape.width,
+                "bottom": shape.top + shape.height,
+            })
+
+        # Check all pairs for overlap
+        for a_idx in range(len(visible_shapes)):
+            for b_idx in range(a_idx + 1, len(visible_shapes)):
+                a = visible_shapes[a_idx]
+                b = visible_shapes[b_idx]
+                # Bounding box intersection test
+                if (a["left"] < b["right"] and a["right"] > b["left"] and
+                        a["top"] < b["bottom"] and a["bottom"] > b["top"]):
+                    # Calculate overlap area
+                    overlap_w = min(a["right"], b["right"]) - max(a["left"], b["left"])
+                    overlap_h = min(a["bottom"], b["bottom"]) - max(a["top"], b["top"])
+                    overlap_area = (overlap_w / 914400) * (overlap_h / 914400)
+                    if overlap_area > 0.2:  # Only report significant overlaps (>0.2 sq inches)
+                        issues.append({
+                            "slide_number": slide_idx,
+                            "severity": "warning",
+                            "category": "shape_overlap",
+                            "description": (
+                                f"Text shapes '{a['name']}' and '{b['name']}' overlap "
+                                f"({overlap_area:.1f} sq in)"
+                            ),
+                            "suggestion": "Reduce text, resize shapes, or reposition to avoid overlap",
+                        })
+
+    # Background-text contrast check
+    for slide_idx, slide in enumerate(prs.slides, 1):
+        bg_is_dark = _is_slide_background_dark(slide)
+        if bg_is_dark is None:
+            continue  # Can't determine background
+
+        dark_text_runs = 0
+        light_text_runs = 0
+        for shape in slide.shapes:
+            if not shape.has_text_frame:
+                continue
+            for para in shape.text_frame.paragraphs:
+                for run_obj in para.runs:
+                    if not run_obj.text.strip():
+                        continue
+                    try:
+                        if run_obj.font.color and run_obj.font.color.rgb:
+                            rgb = str(run_obj.font.color.rgb)
+                            luminance = _hex_luminance(rgb)
+                            if luminance < 0.4:
+                                dark_text_runs += 1
+                            else:
+                                light_text_runs += 1
+                    except (AttributeError, TypeError):
+                        pass
+
+        total_runs = dark_text_runs + light_text_runs
+        if total_runs < 2:
+            continue
+
+        # Dark bg + mostly dark text = likely invisible
+        if bg_is_dark and dark_text_runs > light_text_runs * 2:
+            issues.append({
+                "slide_number": slide_idx,
+                "severity": "warning",
+                "category": "background_contrast",
+                "description": (
+                    f"Dark background with predominantly dark text "
+                    f"({dark_text_runs} dark vs {light_text_runs} light runs)"
+                ),
+                "suggestion": "Check if background color was preserved correctly from the template",
+            })
+        # Light bg + mostly light text = likely invisible
+        elif not bg_is_dark and light_text_runs > dark_text_runs * 2:
+            issues.append({
+                "slide_number": slide_idx,
+                "severity": "warning",
+                "category": "background_contrast",
+                "description": (
+                    f"Light background with predominantly light text "
+                    f"({light_text_runs} light vs {dark_text_runs} dark runs)"
+                ),
+                "suggestion": "Check if background color was preserved correctly from the template",
+            })
 
     # Pacing check
     slide_count = len(prs.slides)

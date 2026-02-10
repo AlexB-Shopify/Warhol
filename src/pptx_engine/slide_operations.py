@@ -246,6 +246,14 @@ def clone_slide_as_is(
     # --- Step 5: Copy slide-level background overrides (if any) ---
     _copy_slide_background(source_slide, new_slide, target_package)
 
+    # --- Step 5b: Ensure layout-level background survived import ---
+    # If the source slide inherits its background from the layout (common
+    # for light/white backgrounds), _copy_slide_background is a no-op.
+    # But the imported layout's background may not render correctly if the
+    # master inheritance chain changed. Check and explicitly propagate
+    # the source layout's background to the slide level if needed.
+    _ensure_layout_background(source_slide, new_slide, target_package)
+
     # --- Step 6: Invalidate the stale shapes proxy cache ---
     # python-pptx's @lazyproperty on Slide.shapes caches a SlideShapes
     # proxy pointing to the ORIGINAL spTree from CT_Slide.new().
@@ -797,6 +805,98 @@ def _copy_slide_background(source_slide, target_slide, target_package) -> None:
 
     except Exception as e:
         logger.warning(f"Could not copy slide background: {e}")
+
+
+def _ensure_layout_background(source_slide, target_slide, target_package) -> None:
+    """Ensure the source layout's background survived the import.
+
+    When a source slide inherits its background from the layout (no explicit
+    slide-level bg), the cloned slide relies on the IMPORTED layout providing
+    the same background. If the source layout has an explicit background
+    (solid, gradient, or image fill) and that background didn't import
+    correctly, we propagate it to the slide level as a fallback.
+
+    This fixes the common bug where white/light-background slides inherit a
+    dark master background after import.
+    """
+    try:
+        # Check if the source slide already had an explicit background
+        src_bg_elem = source_slide.background._element
+        if src_bg_elem is not None and len(src_bg_elem) > 0:
+            return  # Already handled by _copy_slide_background
+
+        # Source slide inherits from layout — check the source layout's background
+        source_layout_part = _get_layout_part(source_slide)
+        ns_p = "http://schemas.openxmlformats.org/presentationml/2006/main"
+        ns_a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+
+        # Look for an explicit background in the SOURCE layout
+        source_layout_xml = source_layout_part._element
+        source_layout_bg = None
+        for bg in source_layout_xml.iter(f"{{{ns_p}}}bg"):
+            # Check if it has real content (bgPr with a fill, not just an empty bg)
+            for bgPr in bg.iter(f"{{{ns_p}}}bgPr"):
+                has_fill = (
+                    bgPr.find(f"{{{ns_a}}}solidFill") is not None
+                    or bgPr.find(f"{{{ns_a}}}gradFill") is not None
+                    or bgPr.find(f"{{{ns_a}}}blipFill") is not None
+                    or bgPr.find(f"{{{ns_a}}}pattFill") is not None
+                )
+                if has_fill:
+                    source_layout_bg = bg
+                    break
+            if source_layout_bg is not None:
+                break
+
+        if source_layout_bg is None:
+            return  # Source layout also inherits from master — nothing to do
+
+        # The source layout has an explicit background. Check if the target
+        # slide's imported layout also has it (it should, but may have been
+        # lost during master re-linking).
+        target_layout_part = _get_layout_part(target_slide)
+        target_layout_xml = target_layout_part._element
+        target_has_bg = False
+        for bg in target_layout_xml.iter(f"{{{ns_p}}}bg"):
+            for bgPr in bg.iter(f"{{{ns_p}}}bgPr"):
+                has_fill = (
+                    bgPr.find(f"{{{ns_a}}}solidFill") is not None
+                    or bgPr.find(f"{{{ns_a}}}gradFill") is not None
+                    or bgPr.find(f"{{{ns_a}}}blipFill") is not None
+                    or bgPr.find(f"{{{ns_a}}}pattFill") is not None
+                )
+                if has_fill:
+                    target_has_bg = True
+                    break
+            if target_has_bg:
+                break
+
+        if target_has_bg:
+            return  # Target layout has the background — all good
+
+        # Target layout LOST the background during import. Propagate the source
+        # layout's background to the slide level as an explicit override.
+        logger.info("Propagating layout background to slide level (import preservation)")
+        new_bg = copy.deepcopy(source_layout_bg)
+
+        # Import any image references in the background
+        rid_map: dict[str, str] = {}
+        _collect_background_image_rels(
+            new_bg, source_layout_part, target_slide.part, target_package, rid_map
+        )
+        if rid_map:
+            _remap_rids(new_bg, rid_map)
+
+        # Insert the background into the target slide's cSld
+        tgt_cSld = target_slide.part._element.cSld
+        # Remove any existing bg element first
+        for existing_bg in tgt_cSld.findall(f"{{{ns_p}}}bg"):
+            tgt_cSld.remove(existing_bg)
+        # bg must be the first child of cSld (before spTree)
+        tgt_cSld.insert(0, new_bg)
+
+    except Exception as e:
+        logger.debug(f"Could not ensure layout background: {e}")
 
 
 def _collect_background_image_rels(

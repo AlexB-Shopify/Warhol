@@ -21,6 +21,9 @@ scripts/                -- Standalone Python scripts the agent runs via terminal
   quality_check.py      -- Run programmatic quality checks on PPTX
   analyze_templates.py  -- Extract structural metadata from template PPTX files
   extract_design_system.py -- Extract design system (fonts/colors) from PPTX
+  match_templates.py    -- Algorithmic template matching with consistency groups
+  assess_content_density.py -- Flag slides where content exceeds template capacity
+  spread_content.py     -- Split over-dense slides into multiple output slides
 workspace/              -- Working directory for intermediate pipeline files (JSON, TXT)
 src/
   parsers/              -- Document parsers (PDF, DOCX, PPTX, TXT/MD) -- pure Python
