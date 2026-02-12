@@ -6,14 +6,16 @@ alwaysApply: false
 
 # Generate Presentation Workflow
 
-Follow these steps sequentially to generate a PowerPoint presentation from an input document. The workflow adapts based on the maturity of the input content — raw ideas get more processing than polished drafts.
+Follow these 8 steps to generate a PowerPoint presentation from an input document. Steps 1-5 are purely content work. Step 6 is where all design decisions happen. Steps 7-8 build and deliver.
 
 ## Prerequisites
 
 - Input document exists (PDF, DOCX, PPTX, TXT, or MD)
-- Design system YAML exists in `design_systems/` (use `design_systems/default.yaml` if none specified)
+- Design system YAML exists in `design_systems/` (use the appropriate brand YAML)
 - Python environment is set up with dependencies from `pyproject.toml`
 - Template registry exists at `template_registry.json` (run the analyze-templates workflow first if missing)
+
+---
 
 ## Step 1: Parse the Input Document
 
@@ -31,26 +33,20 @@ Read `workspace/parsed_content.txt` and assess how ready the content is for a pr
 
 Follow the guidance in the **content-maturity** rule. Write the result to `workspace/content_maturity.json`.
 
-The JSON must conform to the `ContentMaturity` schema (see `src/schemas/slide_schema.py`).
-
 ```
 python scripts/validate_schema.py workspace/content_maturity.json ContentMaturity
 ```
 
-**Report the assessment to the user** — tell them:
-- What maturity level was detected (1-4)
-- What pipeline stages will run
-- Key content gaps and strengths identified
-- Ask if they agree or want to override
+**Report the assessment to the user** — tell them the maturity level (1-4), what stages will run, and key gaps/strengths. Ask if they agree or want to override.
 
-The maturity level determines which of the following steps to execute:
+The maturity level determines which sub-steps run in Step 4:
 
-| Level | Label | Pipeline |
+| Level | Label | Step 4 includes |
 |---|---|---|
-| 1 | Raw ideas | Step 3 → Step 4 → Step 5 → Step 6 → Step 8 → Step 9 → Step 9.5 → Step 9.7 → Step 10 → Step 11 |
-| 2 | Outline | Step 3 → Step 5 → Step 6 → Step 8 → Step 9 → Step 9.5 → Step 9.7 → Step 10 → Step 11 |
-| 3 | Draft | Step 3 → Step 6 → Step 8 → Step 9 → Step 9.5 → Step 9.7 → Step 10 → Step 11 |
-| 4 | Ready | Step 3 → Step 7 → Step 8 → Step 9 → Step 9.5 → Step 9.7 → Step 10 → Step 11 |
+| 1 | Raw ideas | Research → Content Development → Editor |
+| 2 | Outline | Content Development → Editor |
+| 3 | Draft | Editor only |
+| 4 | Ready | Narrative Architecture only |
 
 ## Step 3: Extract Content Inventory
 
@@ -58,171 +54,128 @@ Read `workspace/parsed_content.txt` and produce a structured content inventory.
 
 Follow the guidance in the **content-extraction** rule. Write the result to `workspace/content_inventory.json`.
 
-The JSON must conform to the `ContentInventory` schema (see `src/schemas/slide_schema.py`).
-
 ```
 python scripts/validate_schema.py workspace/content_inventory.json ContentInventory
 ```
 
-If validation fails, fix the JSON and re-validate.
+## Step 4: Research, Write, and Edit Content
 
-## Step 4: Research Agent (Level 1 only)
+This step adapts based on content maturity. All sub-steps below are about **content only** — no design decisions yet.
 
-**Skip this step unless `content_maturity.maturity_level == 1`.**
+### Level 1: Research Agent
 
-Read `workspace/content_inventory.json` and `workspace/content_maturity.json`.
+Follow the **research-agent** rule. Read `workspace/content_inventory.json` and produce `workspace/researched_outline.json`.
 
-Follow the guidance in the **research-agent** rule. Write the result to `workspace/researched_outline.json`.
+### Levels 1-2: Content Development Agent
 
-This step expands raw ideas into a full, structured outline with:
-- Core thesis and narrative arc
-- Fleshed-out sections with key points
-- Identified evidence needs and supporting content
-- Suggested visuals and slide types
+Follow the **content-development** rule. Read the latest artifact and produce `workspace/developed_content.json`.
 
-## Step 5: Content Development Agent (Levels 1-2)
+### Levels 1-3: Editor Agent
 
-**Skip this step unless `content_maturity.maturity_level <= 2`.**
+Follow the **editor-agent** rule. This polishes titles, tightens bullets, refines speaker notes, and ensures narrative flow.
 
-Read the most recent content artifact:
-- `workspace/researched_outline.json` (if Step 4 ran)
-- `workspace/content_inventory.json` (if starting from Level 2)
+### Level 4: Narrative Architecture
 
-Also read `workspace/content_maturity.json` for gap awareness.
+Follow the **narrative-architecture** rule. Read `workspace/content_inventory.json` and produce the deck plan directly.
 
-Follow the guidance in the **content-development** rule. Write the result to `workspace/developed_content.json`.
+## Step 5: Organize Content into Slides
 
-This step crafts full slide-by-slide content with:
-- Story arc (tension, journey, payoff)
-- Developed titles, bullets, speaker notes for every slide
-- Visual intent and design notes for each slide
-- Slide type recommendations
+The output of Step 4 is `workspace/deck_schema.json` — a complete slide-by-slide specification with titles, content blocks, speaker notes, slide types, and layout hints.
 
-## Step 6: Editor Agent (Levels 1-3)
-
-**Skip this step unless `content_maturity.maturity_level <= 3`.**
-
-Read the most recent content artifact:
-- `workspace/developed_content.json` (if Step 5 ran)
-- `workspace/content_inventory.json` (if starting from Level 3)
-
-Follow the guidance in the **editor-agent** rule. This step:
-- Audits and strengthens all titles (tell, don't label)
-- Tightens bullets to 6x6 rule
-- Refines speaker notes for conversational tone
-- Checks content density per slide type
-- Ensures narrative flow and consistency
-
-The editor agent produces the final `workspace/deck_schema.json`.
-
-## Step 7: Architect the Narrative (Level 4 only)
-
-**Only run this step if `content_maturity.maturity_level == 4` (content is presentation-ready).**
-
-For Level 4 content, skip the research/content/editor pipeline and go directly to narrative architecture.
-
-Read `workspace/content_inventory.json` and produce a complete slide-by-slide deck plan.
-
-Follow the guidance in the **narrative-architecture** rule. Write the result to `workspace/deck_schema.json`.
-
-The JSON must conform to the `DeckSchema` schema.
-
-## Step 8: Validate Deck Schema
+Validate it:
 
 ```
 python scripts/validate_schema.py workspace/deck_schema.json DeckSchema
 ```
 
-If validation fails, fix the JSON and re-validate.
+If validation fails, fix and re-validate. The deck schema must be complete and correct before proceeding to design.
 
-## Step 9: Template Matching (Clone-and-Replace Architecture)
+**At this point, all content work is done.** Every slide has its final text, bullets, speaker notes, and narrative intent. Steps 6+ are purely about visual design and building.
 
-If `template_registry.json` exists in the project root, run the algorithmic matcher first:
+## Step 6: Build Branded HTML Deck
 
-```
-python scripts/match_templates.py workspace/deck_schema.json template_registry.json -o workspace/template_matches.json
-```
+This is the core creative step — where content meets design. The output is a fully branded HTML file that is both a browser-viewable presentation and the precise specification for the PPTX builder.
 
-**Architecture change:** Clone-and-replace is now the PRIMARY build mode. Every slide should get a template match — the matcher's default threshold is low (0.30) because even a loosely-matching template with branded visuals is better than a blank-canvas compose.
+Follow the guidance in the **html-composition** rule.
 
-Review the matcher output. The goal is **100% template-matched slides**. If any slides fall back to `build_from_base`, consider manually assigning templates by editing `workspace/template_matches.json`.
+### 6a. Run template matching
 
-If no template registry exists, skip this step — the builder will use branded layouts from the base template as fallback.
-
-```
-python scripts/validate_schema.py workspace/template_matches.json MatchResult
-```
-
-## Step 9.5: Content Density Assessment & Spreading
-
-Run the content density assessment to identify over-dense slides:
-
-```
-python scripts/assess_content_density.py workspace/deck_schema.json workspace/template_matches.json template_registry.json -o workspace/density_report.json
-```
-
-Review the density report. If any slides are flagged as `spread_candidate`, run the content spreader to split them:
-
-```
-python scripts/spread_content.py workspace/deck_schema.json workspace/density_report.json -o workspace/deck_schema.json
-```
-
-If slides were split, **re-run template matching** for the new slides:
+If `template_registry.json` exists:
 
 ```
 python scripts/match_templates.py workspace/deck_schema.json template_registry.json -o workspace/template_matches.json
 ```
 
-And re-validate:
+### 6b. Generate scaffold HTML
+
+Run the renderer to auto-generate an initial branded HTML from the deck schema:
 
 ```
-python scripts/validate_schema.py workspace/deck_schema.json DeckSchema
+python scripts/render_html.py workspace/deck_schema.json \
+    -o workspace/deck_preview.html \
+    --design-system <design_system_yaml> \
+    --matches workspace/template_matches.json \
+    --template-registry template_registry.json
 ```
 
-## Step 9.7: Design Optimization
+The scaffold includes:
+- CSS custom properties from the design system (all brand colors, fonts, sizes as `var(--token)`)
+- Auto-styling rules per slide type and visual profile
+- Template background colors for accurate branded preview
+- Content mapped to template zones
 
-Follow the guidance in the **design-optimization** rule.
+### 6c. Compose the final HTML
 
-Read `workspace/template_matches.json` alongside `workspace/deck_schema.json` and `template_registry.json`.
+Read `workspace/deck_preview.html` and compose the branded presentation. This is where you make every design decision:
 
-For each slide that was matched to a template, review the template's content zones and optimize the deck schema content to fit:
-- Adjust bullet count to match template capacity
-- Trim text length to fit content zones
-- Ensure speaker notes contain the full narrative detail
-- Set `visual_profile` to match each template's visual character
+- Edit text to fit template zones (move overflow to speaker notes)
+- Set element positions, sizes, fonts, and colors using the design system tokens
+- Choose backgrounds per slide (template clone or solid brand color)
+- Ensure visual consistency (section headers match, bookend slides match)
+- Manage content density (trim rather than overflow)
 
-Write the optimized deck schema back to `workspace/deck_schema.json`.
+Write the final HTML back to `workspace/deck_preview.html`.
 
-## Step 10: Build the Presentation
+The HTML file should look like a polished presentation when opened in a browser.
 
-Run the builder script:
+## Step 7: Build PPTX from HTML
+
+Run the HTML-to-PPTX builder:
 
 ```
-# Without templates:
-python scripts/build_slides.py workspace/deck_schema.json -o <output_path> --design-system <design_system_yaml>
-
-# With templates (recommended — clone-and-replace mode):
-python scripts/build_slides.py workspace/deck_schema.json -o <output_path> --design-system <design_system_yaml> --matches workspace/template_matches.json --template-registry template_registry.json
+python scripts/build_from_html.py workspace/deck_preview.html \
+    -o output/presentation.pptx \
+    --base-template "templates/base/Shopify - Example Technical Workshop Slide Bank.pptx"
 ```
 
-Default output path: `output.pptx`
-Default design system: `design_systems/default.yaml`
+The builder mechanically reproduces the HTML:
+- Template-cloned backgrounds: clones the referenced slide from the PPTX template
+- Solid backgrounds: creates a slide from the base template layout
+- Text elements: placed at exact CSS positions with specified fonts, sizes, colors
+- Speaker notes: transferred from hidden divs
 
-The builder uses **clone-and-replace as the primary mode**: for every matched slide, it clones the template slide (preserving all backgrounds, images, decorations, and branded elements) and replaces only the text content. Fallback slides use branded layouts from the base template.
+Also copy the final HTML alongside the PPTX:
 
-## Step 11: Quality Check
+```
+cp workspace/deck_preview.html output/presentation.html
+```
+
+## Step 8: Quality Check and Deliver
 
 Run programmatic quality checks:
 
 ```
-python scripts/quality_check.py <output_path> --design-system <design_system_yaml> --describe
+python scripts/quality_check.py output/presentation.pptx --design-system <design_system_yaml> --describe
 ```
 
-Read `workspace/quality_report.json` and `workspace/quality_report.txt` to assess the result.
+Follow the **quality-review** rule to provide a narrative assessment.
 
-Follow the guidance in the **quality-review** rule to provide a narrative assessment.
+Report to the user:
+- Slide count and quality summary
+- Output files: `output/presentation.pptx` and `output/presentation.html`
+- Any issues that need attention
 
-Report the results to the user: slide count, quality issues, and the output file path.
+---
 
 ## Pipeline Summary
 
@@ -230,52 +183,38 @@ Report the results to the user: slide count, quality issues, and the output file
 Input Document
     │
     ▼
-[Parse] ──► parsed_content.txt
+1. [Parse] ──► parsed_content.txt
     │
     ▼
-[Assess Maturity] ──► content_maturity.json ──► determines pipeline path
+2. [Assess Maturity] ──► content_maturity.json
     │
     ▼
-[Extract Content] ──► content_inventory.json
-    │
-    ├── Level 1 ──► [Research Agent] ──► researched_outline.json
-    │                      │
-    │                      ▼
-    ├── Level 1-2 ──► [Content Development] ──► developed_content.json
-    │                      │
-    │                      ▼
-    ├── Level 1-3 ──► [Editor Agent] ──► deck_schema.json
-    │
-    ├── Level 4 ──► [Narrative Architecture] ──► deck_schema.json
+3. [Extract Content] ──► content_inventory.json
     │
     ▼
-[Template Matching] ──► template_matches.json (clone-and-replace targets)
+4. [Research / Write / Edit] ──► deck_schema.json
+    │   (adapts per maturity level)
     │
     ▼
-[Content Density] ──► density_report.json (flags over-dense slides)
-    │
-    ├── spread_candidates ──► [Content Spreading] ──► deck_schema.json (expanded)
-    │                                │
-    │                                ▼
-    │                         [Re-match Templates] ──► template_matches.json
+5. [Validate Deck Schema] ──► content complete, ready for design
     │
     ▼
-[Design Optimization] ──► deck_schema.json (content fitted to templates)
+6. [Build Branded HTML] ──► deck_preview.html
+    │   ├── template matching (algorithmic)
+    │   ├── scaffold generation (render_html.py)
+    │   └── agent composes final branded HTML
     │
     ▼
-[Build PPTX] ──► Clone template slides + replace text content
-    │             (fallback: branded layout + composer)
+7. [Build PPTX from HTML] ──► output/presentation.pptx
+    │                          output/presentation.html
     ▼
-output.pptx
-    │
-    ▼
-[Quality Check] ──► quality_report.json
+8. [Quality Check] ──► quality_report.json
 ```
 
 ## Error Handling
 
 - If any script fails, read the error output and fix the issue
 - If JSON validation fails, review the schema definition in `src/schemas/` and correct the JSON
-- If the build step fails, check that the deck schema is well-formed
-- If quality issues are severe, consider regenerating specific slides
-- If the user disagrees with the maturity assessment, let them override and adjust the pipeline accordingly
+- If the build step fails, check that the HTML is well-formed
+- If quality issues are severe, edit `workspace/deck_preview.html` and re-run Step 7
+- If the user disagrees with the maturity assessment, let them override and adjust the pipeline

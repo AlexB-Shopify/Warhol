@@ -33,9 +33,10 @@ When the user makes a request, determine which workflow to follow:
 | Generate/create/build a presentation from a document | `generate-presentation.mdc` |
 | Analyze template PPTX files, build a template registry | `analyze-templates.mdc` |
 | Extract fonts/colors/design system from a PPTX | `extract-design-system.mdc` |
-| Edit or improve an existing deck schema | Re-run from the narrative-architecture step |
-| Fix a specific slide | Edit `workspace/deck_schema.json` directly, then re-build |
-| Change the design/branding | Edit or create a design system YAML, then re-build |
+| Edit or improve slide content | Re-run content steps (Steps 4-5), then rebuild HTML and PPTX |
+| Fix a specific slide's design/layout | Edit `workspace/deck_preview.html` directly, then re-run `build_from_html.py` |
+| Tweak slide positions, fonts, or colors | Edit `workspace/deck_preview.html` directly, then re-run `build_from_html.py` |
+| Change the design/branding | Edit or create a design system YAML, re-run `render_html.py` then `build_from_html.py` |
 
 If the request is ambiguous, ask the user which workflow they intend.
 
@@ -51,33 +52,37 @@ If the request is ambiguous, ask the user which workflow they intend.
 1. **Always run scripts before producing JSON** -- parse the input document with the script, don't try to read binary files (PDF/PPTX/DOCX) directly
 2. **Always validate JSON after writing it** -- run `validate_schema.py` after every JSON file you produce
 3. **If validation fails, fix and re-validate** -- never proceed with invalid JSON
-4. **Don't modify library code** -- files in `src/` are stable library code. During a generation run, only write to `workspace/` and the output PPTX path
+4. **Don't modify library code** -- files in `src/` are stable library code. During a generation run, only write to `workspace/` and the output path
 5. **Report progress** -- after each major step, briefly tell the user what was completed and what comes next
 
-### Content Maturity Pipeline
+### 8-Step Pipeline
 
-The generate-presentation workflow includes a **content maturity assessment** that determines how much content processing the input needs. The pipeline adapts automatically:
+The generate-presentation workflow follows 8 clear phases:
 
-- **Level 1 (raw ideas)** → Research Agent → Content Development → Editor → Template Match → Density Check → Design Optimization → Build
-- **Level 2 (outline)** → Content Development → Editor → Template Match → Density Check → Design Optimization → Build
-- **Level 3 (draft)** → Editor → Template Match → Density Check → Design Optimization → Build
-- **Level 4 (presentation-ready)** → Narrative Architecture → Template Match → Density Check → Design Optimization → Build
+1. **Parse Input** -- extract text from the document
+2. **Assess Content Maturity** -- determine how much content processing is needed (Level 1-4)
+3. **Extract Content** -- produce structured content inventory
+4. **Research / Write / Edit** -- all content development (adapts per maturity level)
+5. **Organize into Slides** -- produce and validate the complete deck schema
+6. **Build Branded HTML** -- template matching + agent composes fully branded HTML deck
+7. **Build PPTX from HTML** -- mechanically reproduce the HTML as PowerPoint
+8. **Quality Check + Deliver** -- validate and report results
 
-The **Density Check** step (Step 9.5) runs `assess_content_density.py` to flag over-dense slides, then `spread_content.py` to split them if needed. After spreading, template matching re-runs for the new slides.
+Steps 1-5 are content. Step 6 is design. Steps 7-8 are output.
 
-Always report the assessed maturity level to the user and let them override if they disagree. If the user says "flesh this out" or "this is just rough ideas", factor that into the assessment.
+The **HTML deck** (`workspace/deck_preview.html`) is the primary creative output. It's a fully branded presentation viewable in a browser. The PPTX builder reproduces it mechanically. Both `output/presentation.html` and `output/presentation.pptx` are delivered.
 
 ### Follow-up Requests
 
 After generating a presentation, the user may ask for changes. Handle these efficiently:
 
-- **"Make slide 5 more visual"** -- edit `workspace/deck_schema.json` to change slide 5's type/hints, then re-run `build_slides.py`
-- **"Add a slide about X"** -- edit `workspace/deck_schema.json` to insert a new slide, renumber subsequent slides, re-run build
-- **"Use different fonts"** -- edit or create a design system YAML, re-run build
-- **"Regenerate from scratch"** -- re-run the full pipeline from step 1
-- **"Show me the deck plan"** -- read and summarize `workspace/deck_schema.json`
-- **"More slides from the template bank"** -- re-run template matching with lower threshold, then re-build
-- **"The content needs more work"** -- re-run from a lower maturity level (e.g., run content development again)
+- **"Make slide 5 more visual"** -- edit `workspace/deck_preview.html` to change slide 5's layout/content, then re-run `build_from_html.py`
+- **"Add a slide about X"** -- edit `workspace/deck_preview.html` to insert a new slide section, re-run `build_from_html.py`
+- **"Use different fonts"** -- edit or create a design system YAML, re-run `render_html.py` then `build_from_html.py`
+- **"Regenerate from scratch"** -- re-run the full pipeline from Step 1
+- **"Show me the deck plan"** -- read and summarize `workspace/deck_schema.json` or open `workspace/deck_preview.html`
+- **"The content needs more work"** -- re-run from Step 4 (content development), then rebuild HTML and PPTX
+- **"Fix slide X text"** -- edit the text in `workspace/deck_preview.html` directly, then re-run `build_from_html.py`
 
 ### Tone
 

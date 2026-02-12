@@ -286,6 +286,84 @@ def _detect_background_type(slide) -> str:
         return "none"
 
 
+def _extract_background_color(slide) -> str | None:
+    """Extract the dominant background color from a slide.
+
+    Checks in order: slide-level explicit background, layout background,
+    master background. Returns a hex RGB string (e.g., '#000000') or None.
+    """
+    ns_a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    ns_p = "http://schemas.openxmlformats.org/presentationml/2006/main"
+
+    def _color_from_bg_element(bg_elem) -> str | None:
+        """Try to extract a color from a background XML element."""
+        if bg_elem is None or len(bg_elem) == 0:
+            return None
+        # Check bgPr for solid fill
+        for bgPr in bg_elem.iter(f"{{{ns_p}}}bgPr"):
+            for solid in bgPr.iter(f"{{{ns_a}}}solidFill"):
+                for srgb in solid.iter(f"{{{ns_a}}}srgbClr"):
+                    val = srgb.get("val", "")
+                    if val:
+                        return f"#{val}"
+            # Gradient: return first stop color
+            for grad in bgPr.iter(f"{{{ns_a}}}gradFill"):
+                for gs in grad.iter(f"{{{ns_a}}}gs"):
+                    for srgb in gs.iter(f"{{{ns_a}}}srgbClr"):
+                        val = srgb.get("val", "")
+                        if val:
+                            return f"#{val}"
+                    break  # Only first stop
+        return None
+
+    try:
+        # 1. Slide-level background
+        bg = slide.background
+        if bg and bg._element is not None:
+            color = _color_from_bg_element(bg._element)
+            if color:
+                return color
+
+        # 2. Layout-level background
+        try:
+            layout_part = None
+            from pptx.opc.constants import RELATIONSHIP_TYPE as RT
+            for _key, rel in slide.part.rels.items():
+                if rel.reltype == RT.SLIDE_LAYOUT:
+                    layout_part = rel.target_part
+                    break
+            if layout_part:
+                layout_xml = layout_part._element
+                for layout_bg in layout_xml.iter(f"{{{ns_p}}}bg"):
+                    color = _color_from_bg_element(layout_bg)
+                    if color:
+                        return color
+        except Exception:
+            pass
+
+        # 3. Master-level background
+        try:
+            if layout_part:
+                master_part = None
+                for _key, rel in layout_part.rels.items():
+                    if rel.reltype == RT.SLIDE_MASTER:
+                        master_part = rel.target_part
+                        break
+                if master_part:
+                    master_xml = master_part._element
+                    for master_bg in master_xml.iter(f"{{{ns_p}}}bg"):
+                        color = _color_from_bg_element(master_bg)
+                        if color:
+                            return color
+        except Exception:
+            pass
+
+    except Exception:
+        pass
+
+    return None
+
+
 def _detect_visual_profile(slide, has_images: bool, has_background: bool, bg_type: str) -> str:
     """Detect the visual profile of a slide."""
     if bg_type == "image" or (has_images and has_background):
@@ -544,6 +622,9 @@ def extract_metadata(template_dir: Path, output_path: Path):
                 image_count = _count_images(slide)
                 image_type = _classify_images(slide, image_count, background_type)
 
+                # Background color extraction
+                background_color = _extract_background_color(slide)
+
                 description = _build_slide_description(
                     idx, placeholders, shape_count, has_images, layout_name,
                     text_content=text_content,
@@ -566,6 +647,7 @@ def extract_metadata(template_dir: Path, output_path: Path):
                     "content_capacity": content_capacity,
                     "image_type": image_type,
                     "image_count": image_count,
+                    "background_color": background_color,
                     "description_for_classification": description,
                 })
 
@@ -659,6 +741,7 @@ def merge_classifications(descriptions_path: Path, classifications_path: Path, o
             content_capacity=slide_data.get("content_capacity", "medium"),
             image_type=slide_data.get("image_type", "none"),
             image_count=slide_data.get("image_count", 0),
+            background_color=slide_data.get("background_color"),
         )
         templates.append(template)
 

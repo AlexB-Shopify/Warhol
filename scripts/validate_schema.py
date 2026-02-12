@@ -11,6 +11,7 @@ Schema names:
     TemplateRegistry  -- Analyzed template metadata
     DesignSystem      -- Font and color configuration
     MatchResult       -- Template-to-slide matches
+    HtmlDeck          -- HTML intermediate deck specification
 """
 
 import argparse
@@ -26,6 +27,7 @@ from pydantic import BaseModel, Field
 from src.schemas.slide_schema import ContentInventory, ContentMaturity, DeckSchema
 from src.schemas.template_schema import TemplateRegistry
 from src.schemas.design_system import DesignSystem
+from src.schemas.html_schema import HtmlDeck
 
 
 # MatchResult is defined here (was previously in template_matcher agent)
@@ -57,6 +59,7 @@ SCHEMA_MAP: dict[str, type[BaseModel]] = {
     "TemplateRegistry": TemplateRegistry,
     "DesignSystem": DesignSystem,
     "MatchResult": MatchResult,
+    "HtmlDeck": HtmlDeck,
 }
 
 
@@ -108,6 +111,11 @@ def main():
             print(f"  Name: {instance.name}")
             print(f"  Title font: {instance.fonts.title_font}")
             print(f"  Primary color: {instance.colors.primary}")
+        elif args.schema_name == "HtmlDeck":
+            print(f"  Title: {instance.title}")
+            print(f"  Slides: {len(instance.slides)}")
+            total_elements = sum(len(s.elements) for s in instance.slides)
+            print(f"  Total elements: {total_elements}")
 
     except Exception as e:
         print(f"Validation FAILED: {args.json_file} does not conform to {args.schema_name}", file=sys.stderr)

@@ -1,0 +1,221 @@
+---
+description: Guidance for composing the branded HTML slide deck — the primary creative output that drives both the browser preview and the PPTX build. Used during Step 6 of the generate-presentation workflow.
+globs:
+alwaysApply: false
+---
+
+# HTML Composition
+
+You are composing a fully branded HTML slide deck. This HTML file is not a "preview" — it IS the presentation. It must look correct in a browser and serve as the exact specification the PPTX builder reproduces.
+
+## Design System Tokens
+
+The scaffold HTML (`render_html.py`) injects the design system as CSS custom properties. Use these tokens instead of hardcoding hex values:
+
+### Colors
+```css
+var(--color-primary)          /* Brand accent, e.g., #CDF986 */
+var(--color-secondary)        /* Dark brand, e.g., #191E17 */
+var(--color-accent)           /* Light accent, e.g., #F4F4F4 */
+var(--color-text-dark)        /* Dark text, e.g., #434343 */
+var(--color-text-light)       /* Light text (for dark slides), e.g., #FFFFF6 */
+var(--color-background)       /* Default background, e.g., #000000 */
+var(--color-surface)          /* Card/surface fill, e.g., #F4F4F4 */
+var(--color-text-secondary)   /* Secondary body text */
+var(--color-text-heading)     /* Heading text */
+var(--color-data-point-accent) /* Hero number accent color */
+```
+
+### Slide-Type Backgrounds
+```css
+var(--bg-title)               /* Title slide background */
+var(--bg-section-header)      /* Section header background */
+var(--bg-content)             /* Standard content slide */
+var(--bg-closing)             /* Closing slide */
+var(--bg-quote)               /* Quote slide */
+var(--bg-bullet-list)         /* Bullet list slide */
+```
+
+### Fonts
+```css
+var(--font-title)             /* Title font family */
+var(--font-body)              /* Body text font */
+var(--font-emphasis)          /* Bold/emphasis font */
+var(--font-light)             /* Light-weight font */
+var(--font-extra-light)       /* Display/hero number font */
+var(--font-label)             /* Labels and markers */
+var(--font-quote)             /* Quote text */
+```
+
+### Sizes
+```css
+var(--size-title)             /* Title font size */
+var(--size-subtitle)          /* Subtitle font size */
+var(--size-body)              /* Body text font size */
+var(--size-bullet)            /* Bullet text font size */
+var(--size-data-point)        /* Hero number font size */
+var(--size-label)             /* Label font size */
+```
+
+### Spacing
+```css
+var(--margin-left)            /* Content left margin */
+var(--margin-top)             /* Content top margin */
+var(--margin-right)           /* Content right margin */
+var(--margin-bottom)          /* Content bottom margin */
+```
+
+## Auto-Styling
+
+The CSS includes rules that auto-apply backgrounds per `data-slide-type`:
+- Setting `data-slide-type="title"` on a `.slide` div and using `.slide-bg-auto` gives it `var(--bg-title)` automatically
+- Setting `data-visual-profile="dark"` gives all child elements `color: var(--color-text-light)` automatically
+
+You can override these with explicit inline styles on any element.
+
+## HTML Format
+
+### Slide Dimensions
+
+960px x 540px (10" x 5.625" at 96 DPI). All positions in px. Conversion: `px / 96 = inches`.
+
+### Slide Structure
+
+```html
+<div class="slide-wrapper">
+<div class="slide"
+     data-slide-number="1"
+     data-slide-type="content"
+     data-visual-profile="dark">
+
+  <!-- Background: template clone or solid -->
+  <div class="slide-bg slide-bg-template"
+       data-bg-type="template_clone"
+       data-template-file="templates/base/Shopify - Example Technical Workshop Slide Bank.pptx"
+       data-slide-index="42"
+       style="background:#000000;">
+  </div>
+
+  <!-- Text elements with explicit positioning and styling -->
+  <div class="element" data-role="title"
+       style="position:absolute; left:51px; top:53px; width:500px; height:62px;
+              font-family:var(--font-emphasis); font-size:var(--size-title);
+              color:var(--color-text-light); font-weight:bold; text-align:left;">
+    Slide Title Here
+  </div>
+
+  <div class="element" data-role="bullets"
+       style="position:absolute; left:51px; top:150px; width:550px; height:300px;
+              font-family:var(--font-body); font-size:var(--size-body);
+              color:var(--color-text-light); line-height:1.5;">
+    <ul>
+      <li>First point</li>
+      <li>Second point</li>
+      <li>Third point</li>
+    </ul>
+  </div>
+
+  <div class="speaker-notes">Speaker notes text here...</div>
+</div>
+<div class="slide-label">Slide 1 — content</div>
+</div>
+```
+
+### Background Types
+
+**Template clone** — clones a branded slide from PPTX (preserving backgrounds, images, decorations):
+```html
+<div class="slide-bg slide-bg-template"
+     data-bg-type="template_clone"
+     data-template-file="templates/base/Shopify - Example Technical Workshop Slide Bank.pptx"
+     data-slide-index="42"
+     style="background:#000000;">
+</div>
+```
+The inline `style="background:..."` shows the template's actual color in the browser preview. The PPTX builder uses the `data-template-file` and `data-slide-index` to clone the real slide.
+
+**Solid color** — a branded background color:
+```html
+<div class="slide-bg slide-bg-solid"
+     data-bg-type="solid"
+     style="background:var(--bg-content);">
+</div>
+```
+
+**Auto** — background set automatically by slide type:
+```html
+<div class="slide-bg slide-bg-auto" data-bg-type="solid"></div>
+```
+
+### Text Elements
+
+Required inline CSS properties (map 1:1 to PPTX):
+- `left`, `top`, `width`, `height` — px at 96 DPI
+- `font-family` — font name or `var(--font-*)` token
+- `font-size` — in pt or `var(--size-*)` token
+- `color` — hex RGB or `var(--color-*)` token
+
+Optional: `font-weight:bold`, `font-style:italic`, `text-align`, `line-height`
+
+Required data attribute: `data-role` (title, subtitle, body, bullets, quote, caption, data_point, section_marker, label)
+
+Optional data attribute: `data-shape-name` — for cloned slides, targets a specific shape by name
+
+### Bullet Lists
+
+```html
+<div class="element" data-role="bullets" style="...">
+  <ul>
+    <li>Point one</li>
+    <li>Point two</li>
+  </ul>
+</div>
+```
+
+### Speaker Notes
+
+```html
+<div class="speaker-notes">Notes text here...</div>
+```
+
+## Composition Principles
+
+### 1. The HTML Must Look Correct in a Browser
+
+Open the HTML file and check it. Every slide should look like a branded presentation slide — correct colors, readable text, proper layout. If it looks wrong in the browser, it will look wrong in the PPTX.
+
+### 2. Use Design System Tokens Everywhere
+
+Never hardcode a hex color that's available as a token. Use `var(--color-primary)` not `#CDF986`. This ensures the HTML stays correct if the design system changes.
+
+### 3. Content Fits the Template, Not the Other Way Around
+
+For template-cloned slides, the template defines the visual layout. Trim content to fit. Move overflow to speaker notes. The slide should be sharp and minimal; the notes hold the full narrative.
+
+### 4. Visual Consistency
+
+- All section headers use the same template and visual style
+- Title and closing slides feel like bookends
+- Body content slides have consistent text placement
+- Font usage is predictable across all slides
+
+### 5. Slides Are Visual, Notes Are Verbal
+
+Less text on slides, more in speaker notes. A well-designed slide has a clear title, 3-4 bullet points max, and generous whitespace. The speaker notes contain the full narrative the presenter will deliver.
+
+## Building from the HTML
+
+Once the HTML is complete:
+
+```
+python scripts/build_from_html.py workspace/deck_preview.html \
+    -o output/presentation.pptx \
+    --base-template "templates/base/Shopify - Example Technical Workshop Slide Bank.pptx"
+```
+
+Copy the HTML to the output folder too:
+```
+cp workspace/deck_preview.html output/presentation.html
+```
+
+Both `output/presentation.pptx` and `output/presentation.html` should be identical in content, layout, and branding.

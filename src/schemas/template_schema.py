@@ -115,6 +115,10 @@ class TemplateSlide(BaseModel):
         default=0,
         description="Number of picture shapes on the slide",
     )
+    background_color: Optional[str] = Field(
+        default=None,
+        description="Dominant background color as hex RGB (extracted from slide/layout/master background fill)",
+    )
 
 
 class TemplateRegistry(BaseModel):
