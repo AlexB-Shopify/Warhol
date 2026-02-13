@@ -497,8 +497,9 @@ def deck_schema_to_html_deck(
 
         elements: list[TextElement] = []
         template_index: int | None = None
+        build_mode = "compose"  # default
 
-        # --- Template-matched slide: use content zones for positioning ---
+        # --- Clone mode: template-matched slide with content zones ---
         if (
             match_info
             and match_info.get("match_type") == "use_as_is"
@@ -517,10 +518,15 @@ def deck_schema_to_html_deck(
                 bg_type="template_clone",
                 template_file=template.template_file,
                 slide_index=template.slide_index,
-                color=bg_color,  # Used for HTML preview rendering
+                color=bg_color,
             )
+            build_mode = "clone"
 
-            # Map content to zones
+            # In clone mode, ONLY emit elements that map to content zones.
+            # Each element MUST have a shape_name so the builder can target
+            # the exact shape in the cloned slide. Content that doesn't map
+            # to a zone is pushed to speaker notes.
+            unmapped_content = []
             for zone in template.content_zones:
                 role = _map_role(zone.zone_type)
                 content = _content_for_role(role, spec)
@@ -543,19 +549,21 @@ def deck_schema_to_html_deck(
                     content=content[:zone.max_chars] if zone.max_chars else content,
                     position=pos,
                     font=font,
-                    shape_name=zone.shape_name,
+                    shape_name=zone.shape_name,  # REQUIRED for clone mode
                     bullet_items=bullet_items,
                 ))
 
-        # --- Compose mode ---
+        # --- Compose mode: build from scratch with branded layout ---
         else:
             bg_color = _bg_color_for_type(spec.slide_type.value, design)
-            bg = SlideBackground(bg_type="solid", color=bg_color)
+            bg = SlideBackground(bg_type="layout", color=bg_color)
+            build_mode = "compose"
             elements = _compose_elements(spec, design, visual_profile)
 
         html_slides.append(HtmlSlide(
             slide_number=spec.slide_number,
             slide_type=spec.slide_type.value,
+            build_mode=build_mode,
             background=bg,
             elements=elements,
             visual_profile=visual_profile,
@@ -708,6 +716,7 @@ def _render_slide(slide: HtmlSlide, w: int, h: int) -> str:
         f'data-slide-number="{slide.slide_number}"',
         f'data-slide-type="{escape(slide.slide_type)}"',
         f'data-visual-profile="{escape(slide.visual_profile)}"',
+        f'data-build-mode="{slide.build_mode}"',
     ]
     if slide.template_index is not None:
         attrs.append(f'data-template-index="{slide.template_index}"')
@@ -721,8 +730,7 @@ def _render_slide(slide: HtmlSlide, w: int, h: int) -> str:
     # Background
     bg = slide.background
     if bg.bg_type == "template_clone" and bg.template_file is not None:
-        # Use the template's actual background color for accurate HTML preview.
-        # The data attributes tell the PPTX builder which slide to clone.
+        # Clone mode: data attributes tell the PPTX builder which slide to clone.
         bg_style = ""
         if bg.color:
             bg_style = f' style="background:{bg.color};"'
@@ -732,6 +740,16 @@ def _render_slide(slide: HtmlSlide, w: int, h: int) -> str:
             f' data-template-file="{escape(bg.template_file)}"'
             f' data-slide-index="{bg.slide_index}"'
             f'{bg_style}'
+            f'></div>'
+        )
+    elif bg.bg_type == "layout" and bg.color:
+        # Compose mode: use a branded layout from the base template.
+        # The builder creates a slide from a layout (master bg preserved,
+        # no content shapes cloned).
+        parts.append(
+            f'<div class="slide-bg slide-bg-solid"'
+            f' data-bg-type="layout"'
+            f' style="background:{bg.color};"'
             f'></div>'
         )
     elif bg.bg_type == "solid" and bg.color:
@@ -745,7 +763,7 @@ def _render_slide(slide: HtmlSlide, w: int, h: int) -> str:
         # Auto background from slide type
         parts.append(
             f'<div class="slide-bg slide-bg-auto"'
-            f' data-bg-type="solid"'
+            f' data-bg-type="layout"'
             f'></div>'
         )
 

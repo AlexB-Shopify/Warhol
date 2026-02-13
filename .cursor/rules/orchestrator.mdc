@@ -64,7 +64,7 @@ The generate-presentation workflow follows 8 clear phases:
 3. **Extract Content** -- produce structured content inventory
 4. **Research / Write / Edit** -- all content development (adapts per maturity level)
 5. **Organize into Slides** -- produce and validate the complete deck schema
-6. **Build Branded HTML** -- template matching + agent composes fully branded HTML deck
+6. **Build Branded HTML** -- template matching + fit assessment (clone vs compose) + agent composes fully branded HTML deck
 7. **Build PPTX from HTML** -- mechanically reproduce the HTML as PowerPoint
 8. **Quality Check + Deliver** -- validate and report results
 

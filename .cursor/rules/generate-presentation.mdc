@@ -106,6 +106,20 @@ If `template_registry.json` exists:
 python scripts/match_templates.py workspace/deck_schema.json template_registry.json -o workspace/template_matches.json
 ```
 
+### 6a.1. Assess template fit (clone vs compose)
+
+Run the content-zone fit assessment to verify that template-matched slides genuinely fit their content. Slides that fail are demoted from clone mode to compose mode:
+
+```
+python scripts/assess_template_fit.py workspace/deck_schema.json workspace/template_matches.json template_registry.json -o workspace/template_matches.json --fit-report workspace/fit_report.json
+```
+
+Review the fit report. Clone-mode slides must have content zones that map to the deck schema content blocks. Slides without good zone coverage are demoted to compose mode (built from scratch using the design system).
+
+**Two build modes result from this step:**
+- **Clone** (`data-build-mode="clone"`): Template slide is pasted as-is, text replaced in named shapes only, unmapped shapes cleared. Zero new textboxes.
+- **Compose** (`data-build-mode="compose"`): Slide built from branded layout (master background preserved), all content as new textboxes from the design system.
+
 ### 6b. Generate scaffold HTML
 
 Run the renderer to auto-generate an initial branded HTML from the deck schema:
@@ -148,11 +162,11 @@ python scripts/build_from_html.py workspace/deck_preview.html \
     --base-template "templates/base/Shopify - Example Technical Workshop Slide Bank.pptx"
 ```
 
-The builder mechanically reproduces the HTML:
-- Template-cloned backgrounds: clones the referenced slide from the PPTX template
-- Solid backgrounds: creates a slide from the base template layout
-- Text elements: placed at exact CSS positions with specified fonts, sizes, colors
-- Speaker notes: transferred from hidden divs
+The builder reads `data-build-mode` on each slide and follows two clean paths:
+
+- **Clone mode** (`data-build-mode="clone"`): Clones the referenced template slide from the PPTX (all backgrounds, images, decorations preserved). Replaces text ONLY in named shapes (`data-shape-name`). Clears stale text from unmapped shapes. Creates zero new textboxes.
+- **Compose mode** (`data-build-mode="compose"`): Creates a slide from the base template layout (branded master backgrounds inherited). Builds all text elements as new textboxes at exact CSS positions with specified fonts, sizes, colors.
+- Speaker notes: transferred from hidden divs in both modes.
 
 Also copy the final HTML alongside the PPTX:
 
@@ -201,12 +215,17 @@ Input Document
     ▼
 6. [Build Branded HTML] ──► deck_preview.html
     │   ├── template matching (algorithmic)
+    │   ├── template fit assessment (clone vs compose)
     │   ├── scaffold generation (render_html.py)
     │   └── agent composes final branded HTML
     │
+    │   Clone slides: data-build-mode="clone" + data-shape-name on elements
+    │   Compose slides: data-build-mode="compose" + all new textboxes
+    │
     ▼
-7. [Build PPTX from HTML] ──► output/presentation.pptx
-    │                          output/presentation.html
+7. [Build PPTX from HTML] ──► output.pptx
+    │   Clone: paste template slide, replace named shapes, clear rest
+    │   Compose: branded layout + new textboxes from scratch
     ▼
 8. [Quality Check] ──► quality_report.json
 ```

@@ -92,14 +92,16 @@ class FontSpec(BaseModel):
 class SlideBackground(BaseModel):
     """Background specification for a slide.
 
-    Two modes:
+    Three modes:
     - template_clone: clone a slide from a PPTX template file (preserves all
       branded visuals — backgrounds, images, decorations).
+    - layout: use a branded layout from the base template (master/background
+      inherited, but no content shapes cloned).
     - solid: simple solid-color fill.
     """
 
-    bg_type: Literal["template_clone", "solid"] = Field(
-        description="'template_clone' to clone from a PPTX, 'solid' for a solid color fill"
+    bg_type: Literal["template_clone", "layout", "solid"] = Field(
+        description="'template_clone' to clone from a PPTX, 'layout' for a branded base layout, 'solid' for a solid color fill"
     )
 
     # --- template_clone fields ---
@@ -164,6 +166,12 @@ class HtmlSlide(BaseModel):
 
     slide_number: int = Field(ge=1)
     slide_type: str = Field(description="Slide type from SlideType enum value")
+
+    build_mode: Literal["clone", "compose"] = Field(
+        default="compose",
+        description="'clone' = clone template slide and replace text in named shapes only; "
+                    "'compose' = build from scratch using a branded layout",
+    )
 
     background: SlideBackground = Field(description="How the slide background is produced")
     elements: list[TextElement] = Field(

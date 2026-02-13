@@ -123,7 +123,7 @@ You can override these with explicit inline styles on any element.
 
 ### Background Types
 
-**Template clone** — clones a branded slide from PPTX (preserving backgrounds, images, decorations):
+**Template clone** — clones a branded slide from PPTX (preserving backgrounds, images, decorations). Best for content slides with complex branded visuals:
 ```html
 <div class="slide-bg slide-bg-template"
      data-bg-type="template_clone"
@@ -132,13 +132,13 @@ You can override these with explicit inline styles on any element.
      style="background:#000000;">
 </div>
 ```
-The inline `style="background:..."` shows the template's actual color in the browser preview. The PPTX builder uses the `data-template-file` and `data-slide-index` to clone the real slide.
+The inline `style="background:..."` shows the template's actual color in the browser preview. The PPTX builder clones the template slide for its background, then clears all original text and adds new text boxes at the HTML-specified positions.
 
-**Solid color** — a branded background color:
+**Solid color** — a branded background color. **Use this for section headers, quotes, and any slide with simple backgrounds** where you don't need complex template visuals:
 ```html
 <div class="slide-bg slide-bg-solid"
      data-bg-type="solid"
-     style="background:var(--bg-content);">
+     style="background:#000000;">
 </div>
 ```
 
@@ -146,6 +146,19 @@ The inline `style="background:..."` shows the template's actual color in the bro
 ```html
 <div class="slide-bg slide-bg-auto" data-bg-type="solid"></div>
 ```
+
+### When to Use Solid vs Template Clone
+
+| Slide Type | Recommended Background | Reason |
+|---|---|---|
+| title, closing | template_clone | Need rich branded imagery |
+| section_header | **solid** | Simple dark background, template clone can pick wrong layout |
+| content, bullet_list | template_clone | Branded visual context |
+| quote | solid or template_clone | Depends on desired visual weight |
+| data_point | template_clone | Branded visual context |
+| two_column, comparison | template_clone | Layout comes from template |
+
+Section headers should always use `data-bg-type="solid"` with an explicit background color to avoid template matching issues where the cloned template may have a different visual design (e.g., two-tone vertical sections) than intended.
 
 ### Text Elements
 

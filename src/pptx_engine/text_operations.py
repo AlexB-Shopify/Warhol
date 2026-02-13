@@ -1,17 +1,23 @@
 """Text manipulation operations for PowerPoint slides.
 
 Provides primitives for text boxes, bullet lists, labels, hero numbers,
-and multi-format text boxes with independently styled runs.
+multi-format text boxes with independently styled runs, and decoration
+shapes (accent bars / stripes).
 """
 
 import logging
 from typing import Any
 
+from lxml import etree
 from pptx.dml.color import RGBColor
+from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import PP_ALIGN
 from pptx.util import Inches, Pt
 
 logger = logging.getLogger(__name__)
+
+# Namespace for DrawingML elements
+_NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 
 # ---------------------------------------------------------------------------
@@ -60,6 +66,12 @@ def add_textbox(
     )
     tf = txBox.text_frame
     tf.word_wrap = word_wrap
+
+    # Zero out internal margins for pixel-accurate positioning
+    tf.margin_left = Inches(0)
+    tf.margin_top = Inches(0)
+    tf.margin_right = Inches(0)
+    tf.margin_bottom = Inches(0)
 
     try:
         tf.auto_size = None  # Manual sizing
@@ -127,6 +139,12 @@ def add_bullet_list(
     tf = txBox.text_frame
     tf.word_wrap = True
 
+    # Zero out internal margins for pixel-accurate positioning
+    tf.margin_left = Inches(0)
+    tf.margin_top = Inches(0)
+    tf.margin_right = Inches(0)
+    tf.margin_bottom = Inches(0)
+
     for i, item in enumerate(items):
         if i == 0:
             p = tf.paragraphs[0]
@@ -137,6 +155,9 @@ def add_bullet_list(
         p.level = 0
         _apply_run_format(p, font_name, font_size, font_color, bold=False, italic=False)
         p.alignment = PP_ALIGN.LEFT
+
+        # Explicitly set bullet character via XML (don't rely on layout defaults)
+        _set_bullet_char(p, "\u2022", font_color)
 
         # Set bullet formatting
         p.space_after = Pt(font_size * 0.4)
@@ -426,8 +447,81 @@ def populate_slide_text(
 
 
 # ---------------------------------------------------------------------------
+# Decoration shapes
+# ---------------------------------------------------------------------------
+
+
+def add_accent_bar(
+    slide,
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+    color_hex: str,
+) -> object:
+    """Add a thin colored rectangle shape (accent stripe / bar).
+
+    Used to replicate CSS border-left accent stripes in the PPTX.
+
+    Args:
+        slide: Target slide.
+        left, top, width, height: Position and size in inches.
+        color_hex: Fill color as hex string (e.g., '#CDF986').
+
+    Returns:
+        The created shape.
+    """
+    shape = slide.shapes.add_shape(
+        MSO_SHAPE.RECTANGLE,
+        Inches(left), Inches(top), Inches(width), Inches(height),
+    )
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = _hex_to_rgb(color_hex)
+    # Remove the shape's own outline
+    shape.line.fill.background()
+    return shape
+
+
+# ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _set_bullet_char(paragraph, char: str = "\u2022", color_hex: str | None = None) -> None:
+    """Explicitly set a bullet character on a paragraph using XML.
+
+    This ensures bullets appear regardless of slide layout defaults.
+    """
+    pPr = paragraph._p.get_or_add_pPr()
+
+    # Remove any existing buNone (explicit "no bullet") element
+    for existing in pPr.findall(f"{{{_NS_A}}}buNone"):
+        pPr.remove(existing)
+    # Remove any existing buChar to avoid duplicates
+    for existing in pPr.findall(f"{{{_NS_A}}}buChar"):
+        pPr.remove(existing)
+    # Remove any existing buAutoNum
+    for existing in pPr.findall(f"{{{_NS_A}}}buAutoNum"):
+        pPr.remove(existing)
+
+    # Set bullet color if specified
+    if color_hex:
+        # Remove existing buClr
+        for existing in pPr.findall(f"{{{_NS_A}}}buClr"):
+            pPr.remove(existing)
+        buClr = etree.SubElement(pPr, f"{{{_NS_A}}}buClr")
+        srgbClr = etree.SubElement(buClr, f"{{{_NS_A}}}srgbClr")
+        srgbClr.set("val", color_hex.lstrip("#")[:6])
+
+    # Set bullet size relative to text
+    for existing in pPr.findall(f"{{{_NS_A}}}buSzPct"):
+        pPr.remove(existing)
+    buSzPct = etree.SubElement(pPr, f"{{{_NS_A}}}buSzPct")
+    buSzPct.set("val", "100000")  # 100% of text size
+
+    # Set the actual bullet character
+    buChar = etree.SubElement(pPr, f"{{{_NS_A}}}buChar")
+    buChar.set("char", char)
 
 
 def _set_shape_text(
