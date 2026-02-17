@@ -45,6 +45,50 @@ class TextContent(BaseModel):
     all_text: str = Field(default="", description="All visible text concatenated")
 
 
+class DecorationAsset(BaseModel):
+    """A decorative shape or element on a template slide.
+
+    Cataloged during template analysis so the HTML composition agent knows
+    what visual elements come with each template when cloning. Also used
+    by the template matcher to score visual alignment.
+    """
+
+    asset_type: Literal[
+        "accent_shape",
+        "divider_line",
+        "icon",
+        "illustration",
+        "background_image",
+        "photo",
+        "logo",
+        "badge",
+        "frame",
+        "gradient_overlay",
+        "pattern",
+        "chart_placeholder",
+    ] = Field(description="Classification of the decorative element")
+    shape_name: str = Field(description="Name of the shape in the PPTX (for reference)")
+    position: tuple[float, float, float, float] = Field(
+        description="(left, top, width, height) in inches"
+    )
+    description: str = Field(
+        default="",
+        description="What this element looks like or represents",
+    )
+    is_branded: bool = Field(
+        default=True,
+        description="Safe to keep when cloning (branded assets = True, content-specific = False)",
+    )
+    color: Optional[str] = Field(
+        default=None,
+        description="Dominant color as hex RGB (if applicable)",
+    )
+    group_id: Optional[str] = Field(
+        default=None,
+        description="Groups related elements (e.g., a badge + its label share a group_id)",
+    )
+
+
 class TemplateSlide(BaseModel):
     """Metadata for a single slide within a template file."""
 
@@ -118,6 +162,16 @@ class TemplateSlide(BaseModel):
     background_color: Optional[str] = Field(
         default=None,
         description="Dominant background color as hex RGB (extracted from slide/layout/master background fill)",
+    )
+    thumbnail_path: Optional[str] = Field(
+        default=None,
+        description="Path to exported PNG thumbnail of this slide (relative to project root)",
+    )
+
+    # --- Decoration asset catalog ---
+    decoration_assets: list[DecorationAsset] = Field(
+        default_factory=list,
+        description="Cataloged decorative elements (shapes, images, icons, lines) on this slide",
     )
 
 

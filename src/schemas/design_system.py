@@ -129,11 +129,32 @@ class ColorConfig(BaseModel):
 # Decoration configuration
 # ---------------------------------------------------------------------------
 
+class DecorationPattern(BaseModel):
+    """A reusable decoration recipe for compose-mode slides.
+
+    Defines named visual patterns (e.g., numbered cards, accent dividers,
+    image frames) that the HTML composition agent can place on slides.
+    Each pattern maps to CSS class names that the PPTX builder reproduces
+    as shapes.
+    """
+
+    name: str = Field(description="Pattern identifier, e.g., 'numbered_card', 'accent_divider'")
+    description: str = Field(
+        default="",
+        description="What this pattern looks like and when to use it",
+    )
+    elements: list[str] = Field(
+        default_factory=list,
+        description="CSS class names that compose this pattern in the HTML",
+    )
+
+
 class DecorationConfig(BaseModel):
     """Visual decoration parameters for shapes, lines, badges.
 
     Controls the decorative elements that give slides visual richness:
-    divider lines, accent bars, badge shapes, image placeholder areas.
+    divider lines, accent bars, badge shapes, image placeholder areas,
+    and reusable decoration patterns.
     """
 
     divider_line_color: Optional[str] = Field(
@@ -167,6 +188,10 @@ class DecorationConfig(BaseModel):
     image_placeholder_fill: Optional[str] = Field(
         default=None,
         description="Fill color for image placeholder areas. Falls back to colors.surface.",
+    )
+    patterns: list[DecorationPattern] = Field(
+        default_factory=list,
+        description="Reusable decoration patterns for compose-mode slides",
     )
 
 

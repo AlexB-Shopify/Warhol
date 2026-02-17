@@ -114,6 +114,12 @@ class SlideBackground(BaseModel):
         description="0-based slide index in the source template to clone",
     )
 
+    # --- thumbnail for HTML preview ---
+    thumbnail_path: Optional[str] = Field(
+        default=None,
+        description="Path to slide thumbnail PNG for richer HTML preview",
+    )
+
     # --- solid fields ---
     color: Optional[str] = Field(
         default=None,

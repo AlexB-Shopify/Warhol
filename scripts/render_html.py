@@ -138,18 +138,26 @@ def generate_design_tokens_css(design: DesignSystem) -> str:
 def generate_auto_styling_css() -> str:
     """Generate CSS rules that auto-apply branding per slide type and visual profile.
 
-    These rules mean the agent can set `data-slide-type` and `data-visual-profile`
-    and get correct backgrounds and text colors automatically.
+    Uses gradients, accent bars, and visual structure to make the HTML preview
+    a richer approximation of the final branded presentation.
     """
     return """\
 /* --- Auto-apply branded backgrounds per slide type --- */
-.slide[data-slide-type="title"] > .slide-bg-auto { background: var(--bg-title); }
-.slide[data-slide-type="section_header"] > .slide-bg-auto { background: var(--bg-section-header); }
+.slide[data-slide-type="title"] > .slide-bg-auto {
+    background: linear-gradient(145deg, var(--bg-title) 0%, color-mix(in srgb, var(--bg-title) 85%, var(--color-primary)) 100%);
+}
+.slide[data-slide-type="section_header"] > .slide-bg-auto {
+    background: linear-gradient(135deg, var(--bg-section-header) 0%, color-mix(in srgb, var(--bg-section-header) 80%, var(--color-primary)) 100%);
+}
 .slide[data-slide-type="content"] > .slide-bg-auto { background: var(--bg-content); }
 .slide[data-slide-type="two_column"] > .slide-bg-auto { background: var(--bg-content); }
 .slide[data-slide-type="bullet_list"] > .slide-bg-auto { background: var(--bg-bullet-list); }
-.slide[data-slide-type="closing"] > .slide-bg-auto { background: var(--bg-closing); }
-.slide[data-slide-type="quote"] > .slide-bg-auto { background: var(--bg-quote); }
+.slide[data-slide-type="closing"] > .slide-bg-auto {
+    background: linear-gradient(145deg, var(--bg-closing) 0%, color-mix(in srgb, var(--bg-closing) 85%, var(--color-primary)) 100%);
+}
+.slide[data-slide-type="quote"] > .slide-bg-auto {
+    background: linear-gradient(180deg, var(--bg-quote) 0%, color-mix(in srgb, var(--bg-quote) 90%, var(--color-primary)) 100%);
+}
 .slide[data-slide-type="data_point"] > .slide-bg-auto { background: var(--bg-data-point); }
 .slide[data-slide-type="comparison"] > .slide-bg-auto { background: var(--bg-content); }
 .slide[data-slide-type="timeline"] > .slide-bg-auto { background: var(--bg-content); }
@@ -157,6 +165,57 @@ def generate_auto_styling_css() -> str:
 .slide[data-slide-type="image_with_text"] > .slide-bg-auto { background: var(--bg-content); }
 .slide[data-slide-type="chart"] > .slide-bg-auto { background: var(--bg-content); }
 .slide[data-slide-type="team"] > .slide-bg-auto { background: var(--bg-content); }
+
+/* --- Accent bar on section headers, title, and closing slides --- */
+.slide[data-slide-type="section_header"]::after,
+.slide[data-slide-type="title"]::after,
+.slide[data-slide-type="closing"]::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--color-primary, #CDF986);
+    z-index: 2;
+}
+
+/* --- Top accent stripe on content slides --- */
+.slide[data-slide-type="content"]::after,
+.slide[data-slide-type="two_column"]::after,
+.slide[data-slide-type="bullet_list"]::after,
+.slide[data-slide-type="comparison"]::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--color-primary, #CDF986);
+    z-index: 2;
+}
+
+/* --- Quote slide left accent bar --- */
+.slide[data-slide-type="quote"]::before {
+    content: '';
+    position: absolute;
+    top: 20%;
+    left: 24px;
+    width: 4px;
+    height: 60%;
+    background: var(--color-primary, #CDF986);
+    border-radius: 2px;
+    z-index: 2;
+}
+
+/* --- Richer solid backgrounds: use gradients for depth --- */
+.slide-bg-solid[data-bg-type="layout"] {
+    /* Add a subtle gradient overlay for visual depth */
+}
+.slide[data-visual-profile="dark"] > .slide-bg-solid {
+    background-image: linear-gradient(180deg, rgba(255,255,255,0.03) 0%, transparent 50%) !important;
+    background-blend-mode: overlay;
+}
 
 /* --- Auto text colors per visual profile --- */
 .slide[data-visual-profile="dark"] { color: var(--color-text-light); }
@@ -335,6 +394,62 @@ body {
     body { gap: 24px; padding: 24px 10px; }
 }
 
+/* --- Decoration patterns --- */
+
+/* Numbered badge: circle with number inside */
+.decoration.numbered-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--color-badge-fill, var(--color-primary));
+    color: var(--color-badge-text, var(--color-secondary));
+    font-family: var(--font-emphasis);
+    font-weight: bold;
+    z-index: 1;
+}
+
+/* Card with accent bar: rounded rect with colored left border */
+.decoration.accent-card {
+    border-left: 4px solid var(--color-accent-bar, var(--color-primary));
+    background: var(--color-surface, #F4F4F4);
+    border-radius: 4px;
+    padding: 12px 16px;
+    z-index: 1;
+}
+
+/* Horizontal divider line */
+.decoration.divider-line {
+    border: none;
+    border-top: 1px solid var(--color-divider, #CCCCCC);
+    z-index: 1;
+}
+
+/* Icon placeholder: small circle for icon or avatar */
+.decoration.icon-placeholder {
+    border-radius: 50%;
+    background: var(--color-surface, #F4F4F4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10pt;
+    color: var(--color-text-light);
+    z-index: 1;
+}
+
+/* Image frame with caption area below */
+.decoration.image-frame {
+    background: var(--color-surface, #F4F4F4);
+    border: 2px dashed var(--color-divider, #CCCCCC);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-light);
+    font-style: italic;
+    font-size: 10pt;
+    z-index: 1;
+}
+
 /* --- Print --- */
 @media print {
     html { background: white; }
@@ -360,10 +475,10 @@ def _zone_position_to_px(position: tuple[float, float, float, float]) -> Element
     """Convert a content zone position (inches) to ElementPosition (px at 96 DPI)."""
     left, top, width, height = position
     return ElementPosition(
-        left=round(left * DPI, 1),
-        top=round(top * DPI, 1),
-        width=round(width * DPI, 1),
-        height=round(height * DPI, 1),
+        left=max(0, round(left * DPI, 1)),
+        top=max(0, round(top * DPI, 1)),
+        width=max(1, round(width * DPI, 1)),
+        height=max(1, round(height * DPI, 1)),
     )
 
 
@@ -519,6 +634,7 @@ def deck_schema_to_html_deck(
                 template_file=template.template_file,
                 slide_index=template.slide_index,
                 color=bg_color,
+                thumbnail_path=getattr(template, "thumbnail_path", None),
             )
             build_mode = "clone"
 
@@ -600,62 +716,186 @@ def _bg_color_for_type(slide_type: str, design: DesignSystem) -> str:
     return type_map.get(slide_type, design.content_bg)
 
 
+def _estimate_text_height(text: str, font_size_pt: float, box_width_px: float,
+                          line_spacing: float = 1.0, max_lines: int = 10) -> float:
+    """Estimate height in px needed for text at a given font size and box width.
+
+    Uses a character-per-line heuristic: at 12pt ~9 chars/inch of width,
+    scaling inversely with font size.  Returns pixels at 96 DPI.
+    """
+    if not text:
+        return font_size_pt / 72 * DPI * 1.3
+
+    box_width_in = box_width_px / DPI
+    chars_per_inch = max(1.0, 9.0 * (12.0 / font_size_pt))
+    chars_per_line = max(1, int(box_width_in * chars_per_inch))
+
+    lines_needed = 0
+    for paragraph in text.split("\n"):
+        if not paragraph.strip():
+            lines_needed += 1
+            continue
+        lines_needed += max(1, -(-len(paragraph) // chars_per_line))
+
+    lines_needed = min(lines_needed, max_lines)
+    line_height_px = font_size_pt / 72 * DPI * max(line_spacing, 1.0) * 1.3
+    return lines_needed * line_height_px
+
+
+def _fit_font_size(text: str, box_width_px: float, box_height_px: float,
+                   desired_pt: float, min_pt: float = 10.0) -> float:
+    """Reduce font size if text won't fit in the given box dimensions.
+
+    Starts at desired_pt and steps down until the text fits, stopping at min_pt.
+    """
+    box_w_in = box_width_px / DPI
+    box_h_in = box_height_px / DPI
+
+    if not text or box_w_in <= 0 or box_h_in <= 0:
+        return desired_pt
+
+    for size_pt in range(int(desired_pt), int(min_pt) - 1, -1):
+        chars_per_inch = max(1.0, 9.0 * (12.0 / size_pt))
+        chars_per_line = max(1, int(box_w_in * chars_per_inch))
+        line_height_in = size_pt / 72.0 * 1.3
+        max_lines = max(1, int(box_h_in / line_height_in))
+
+        lines_needed = 0
+        for paragraph in text.split("\n"):
+            if not paragraph.strip():
+                lines_needed += 1
+                continue
+            lines_needed += max(1, -(-len(paragraph) // chars_per_line))
+
+        if lines_needed <= max_lines:
+            return float(size_pt)
+
+    return min_pt
+
+
 def _compose_elements(
     spec: SlideSpec,
     design: DesignSystem,
     visual_profile: str,
 ) -> list[TextElement]:
-    """Create elements for a compose-mode slide using design system defaults."""
+    """Create elements for a compose-mode slide using design system defaults.
+
+    Dynamically sizes textboxes based on content length and font size,
+    and caps font sizes so text fits within the allocated space.
+    """
     elements: list[TextElement] = []
     ml = design.content_area.margin_left * DPI
     mt = design.content_area.margin_top * DPI
     content_w = (design.dimensions.width - design.content_area.margin_left - design.content_area.margin_right) * DPI
     slide_h = design.dimensions.height * DPI
+    margin_bottom_px = design.content_area.margin_bottom * DPI
+
+    body_top = mt
 
     if spec.title:
-        title_h = 62
+        font = _font_for_role("title", design, visual_profile)
+        line_sp = font.line_spacing or 1.0
+
+        # Estimate how much height the title needs
+        raw_h = _estimate_text_height(spec.title, font.size_pt, content_w,
+                                       line_spacing=line_sp, max_lines=3)
+        title_h = max(raw_h, font.size_pt / 72 * DPI * 1.3)
+        title_h = min(title_h, slide_h * 0.35)  # cap at 35% of slide
+
+        # Fit font size to the allocated box
+        fitted_size = _fit_font_size(spec.title, content_w, title_h,
+                                      font.size_pt, min_pt=16)
+        font.size_pt = fitted_size
+
         elements.append(TextElement(
             role="title",
             content=spec.title,
             position=ElementPosition(left=ml, top=mt, width=content_w, height=title_h),
-            font=_font_for_role("title", design, visual_profile),
+            font=font,
         ))
-        body_top = mt + title_h + 24
+        body_top = mt + title_h + 12
     else:
         body_top = mt
 
     if spec.subtitle:
-        sub_h = 40
+        font = _font_for_role("subtitle", design, visual_profile)
+        line_sp = font.line_spacing or 1.0
+
+        raw_h = _estimate_text_height(spec.subtitle, font.size_pt, content_w,
+                                       line_spacing=line_sp, max_lines=2)
+        sub_h = max(raw_h, font.size_pt / 72 * DPI * 1.3)
+        sub_h = min(sub_h, slide_h * 0.18)
+
+        fitted_size = _fit_font_size(spec.subtitle, content_w, sub_h,
+                                      font.size_pt, min_pt=12)
+        font.size_pt = fitted_size
+
         elements.append(TextElement(
             role="subtitle",
             content=spec.subtitle,
             position=ElementPosition(left=ml, top=body_top, width=content_w, height=sub_h),
-            font=_font_for_role("subtitle", design, visual_profile),
+            font=font,
         ))
-        body_top += sub_h + 16
+        body_top += sub_h + 10
 
     body_content = _content_for_role("body", spec)
     bullet_items = _bullet_items_for_spec(spec)
-    body_h = slide_h - body_top - (design.content_area.margin_bottom * DPI)
+    body_h = slide_h - body_top - margin_bottom_px
 
     if body_content or bullet_items:
         role = "bullets" if bullet_items else "body"
+        font = _font_for_role(role, design, visual_profile)
+
+        # For bullets, estimate based on item count
+        if bullet_items:
+            text_for_estimate = "\n".join(bullet_items)
+        else:
+            text_for_estimate = body_content
+
+        fitted_size = _fit_font_size(text_for_estimate, content_w,
+                                      max(body_h, 40), font.size_pt, min_pt=9)
+        font.size_pt = fitted_size
+
         elements.append(TextElement(
             role=role,
             content=body_content,
-            position=ElementPosition(left=ml, top=body_top, width=content_w, height=max(body_h, 40)),
-            font=_font_for_role(role, design, visual_profile),
+            position=ElementPosition(left=ml, top=body_top, width=content_w,
+                                     height=max(body_h, 40)),
+            font=font,
             bullet_items=bullet_items,
         ))
 
     data_text = _content_for_role("data_point", spec)
     if data_text:
+        font = _font_for_role("data_point", design, visual_profile)
+        data_h = 120
+        fitted_size = _fit_font_size(data_text, content_w, data_h,
+                                      font.size_pt, min_pt=24)
+        font.size_pt = fitted_size
+
         elements.append(TextElement(
             role="data_point",
             content=data_text,
-            position=ElementPosition(left=ml, top=mt + 80, width=content_w, height=120),
-            font=_font_for_role("data_point", design, visual_profile),
+            position=ElementPosition(left=ml, top=mt + 80, width=content_w, height=data_h),
+            font=font,
         ))
+
+    # Image placeholders from image_suggestions
+    if spec.image_suggestions:
+        img_top = body_top + max(body_h, 40) + 10 if (body_content or bullet_items) else body_top
+        remaining_h = slide_h - img_top - margin_bottom_px
+        if remaining_h > 80:
+            elements.append(TextElement(
+                role="image_placeholder",
+                content=spec.image_suggestions[0],
+                position=ElementPosition(
+                    left=ml,
+                    top=img_top,
+                    width=content_w * 0.6,
+                    height=min(remaining_h, 250),
+                ),
+                font=_font_for_role("caption", design, visual_profile),
+            ))
 
     return elements
 
@@ -731,9 +971,19 @@ def _render_slide(slide: HtmlSlide, w: int, h: int) -> str:
     bg = slide.background
     if bg.bg_type == "template_clone" and bg.template_file is not None:
         # Clone mode: data attributes tell the PPTX builder which slide to clone.
+        # If a thumbnail exists, use it as CSS background-image for a richer preview.
+        style_parts = []
+        if bg.thumbnail_path and Path(bg.thumbnail_path).exists():
+            style_parts.append(f"background-image:url('{escape(bg.thumbnail_path)}')")
+            style_parts.append("background-size:cover")
+            style_parts.append("background-position:center")
+        elif bg.color:
+            style_parts.append(f"background:{bg.color}")
+
         bg_style = ""
-        if bg.color:
-            bg_style = f' style="background:{bg.color};"'
+        if style_parts:
+            bg_style = f' style="{"; ".join(style_parts)};"'
+
         parts.append(
             f'<div class="slide-bg slide-bg-template"'
             f' data-bg-type="template_clone"'
@@ -795,6 +1045,36 @@ def _render_element(elem: TextElement) -> str:
     """Render a single TextElement to an HTML div."""
     pos = elem.position
     font = elem.font
+
+    # Image placeholder: render as a dashed-border placeholder box
+    if elem.role == "image_placeholder":
+        style_parts = [
+            f"left:{pos.left:.1f}px",
+            f"top:{pos.top:.1f}px",
+            f"width:{pos.width:.1f}px",
+            f"height:{pos.height:.1f}px",
+            "background:var(--color-surface)",
+            "border:2px dashed var(--color-text-light)",
+            "display:flex",
+            "align-items:center",
+            "justify-content:center",
+            f"font-family:'{escape(font.family)}'",
+            f"font-size:{font.size_pt}pt",
+            "color:var(--color-text-light)",
+            "font-style:italic",
+            "text-align:center",
+        ]
+        style = "; ".join(style_parts)
+        description = escape(elem.content)
+        return (
+            f'<div class="element image-placeholder"'
+            f' data-role="image_placeholder"'
+            f' data-image-description="{description}"'
+            f' data-image-style=""'
+            f' style="{style}">'
+            f'<span class="placeholder-label">{description}</span>'
+            f'</div>'
+        )
 
     style_parts = [
         f"left:{pos.left:.1f}px",

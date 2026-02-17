@@ -51,6 +51,7 @@ from src.pptx_engine.text_operations import (
     add_textbox,
     add_bullet_list,
     add_accent_bar,
+    add_image_placeholder,
 )
 from src.schemas.html_schema import DPI
 
@@ -326,7 +327,15 @@ def _build_slide_from_section(
 
     # Create all text elements as new textboxes
     for elem_div in section.find_all("div", class_="element"):
-        _add_element_to_slide_compose(slide, elem_div, vmap)
+        role = elem_div.get("data-role", "")
+        if role == "image_placeholder":
+            _add_image_placeholder_to_slide(slide, elem_div, vmap)
+        else:
+            _add_element_to_slide_compose(slide, elem_div, vmap)
+
+    # Create decoration shapes (non-text visual elements)
+    for deco_div in section.find_all("div", class_="decoration"):
+        _add_decoration_to_slide(slide, deco_div, vmap)
 
     # Speaker notes
     notes_div = section.find("div", class_="speaker-notes")
@@ -404,6 +413,180 @@ def _add_element_to_slide_compose(
             alignment=alignment,
             line_spacing=line_spacing,
         )
+
+
+def _add_decoration_to_slide(
+    slide, deco_div: Tag, var_map: dict[str, str] | None = None,
+) -> None:
+    """Add a decoration shape to a compose-mode slide.
+
+    Handles CSS classes: numbered-badge, accent-card, divider-line,
+    icon-placeholder, image-frame. Each becomes a PPTX shape at the
+    specified CSS position.
+    """
+    from pptx.enum.shapes import MSO_SHAPE
+    from pptx.enum.text import PP_ALIGN
+
+    vmap = var_map or {}
+    style = _resolve_vars(deco_div.get("style", ""), vmap)
+    classes = deco_div.get("class", [])
+    if isinstance(classes, str):
+        classes = classes.split()
+
+    left_px = _parse_css_value(style, "left")
+    top_px = _parse_css_value(style, "top")
+    width_px = _parse_css_value(style, "width")
+    height_px = _parse_css_value(style, "height")
+
+    left = _px_to_inches(left_px)
+    top = _px_to_inches(top_px)
+    width = _px_to_inches(width_px)
+    height = _px_to_inches(height_px)
+
+    if width <= 0 or height <= 0:
+        return
+
+    text_content = deco_div.get_text(strip=True)
+
+    if "numbered-badge" in classes:
+        shape = slide.shapes.add_shape(
+            MSO_SHAPE.OVAL,
+            Inches(left), Inches(top), Inches(width), Inches(height),
+        )
+        fill_color = _parse_css_color(style, "background", vmap.get("--color-badge-fill", "#CDF986"))
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = _hex_to_rgb(fill_color)
+        shape.line.fill.background()
+        if text_content:
+            tf = shape.text_frame
+            tf.word_wrap = True
+            p = tf.paragraphs[0] if tf.paragraphs else tf.add_paragraph()
+            p.text = text_content
+            p.alignment = PP_ALIGN.CENTER
+            text_color = _parse_css_color(style, "color", vmap.get("--color-badge-text", "#191E17"))
+            for run in p.runs:
+                run.font.size = Pt(max(int(width * 72 * 0.4), 10))
+                run.font.color.rgb = _hex_to_rgb(text_color)
+                run.font.bold = True
+        return
+
+    if "divider-line" in classes:
+        line_color = vmap.get("--color-divider", "#CCCCCC")
+        add_accent_bar(slide, left, top, width, max(height, 0.01), line_color)
+        return
+
+    if "accent-card" in classes:
+        shape = slide.shapes.add_shape(
+            MSO_SHAPE.ROUNDED_RECTANGLE,
+            Inches(left), Inches(top), Inches(width), Inches(height),
+        )
+        fill_color = _parse_css_color(style, "background", vmap.get("--color-surface", "#F4F4F4"))
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = _hex_to_rgb(fill_color)
+        shape.line.fill.background()
+        # Add accent bar on left edge
+        accent_color = vmap.get("--color-accent-bar", vmap.get("--color-primary", "#CDF986"))
+        add_accent_bar(slide, left, top, 0.04, height, accent_color)
+        if text_content:
+            tf = shape.text_frame
+            tf.word_wrap = True
+            p = tf.paragraphs[0] if tf.paragraphs else tf.add_paragraph()
+            p.text = text_content
+            text_color = _parse_css_color(style, "color", "#434343")
+            for run in p.runs:
+                run.font.size = Pt(11)
+                run.font.color.rgb = _hex_to_rgb(text_color)
+        return
+
+    if "icon-placeholder" in classes:
+        shape = slide.shapes.add_shape(
+            MSO_SHAPE.OVAL,
+            Inches(left), Inches(top), Inches(width), Inches(height),
+        )
+        fill_color = _parse_css_color(style, "background", vmap.get("--color-surface", "#F4F4F4"))
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = _hex_to_rgb(fill_color)
+        shape.line.fill.background()
+        if text_content:
+            tf = shape.text_frame
+            tf.word_wrap = True
+            p = tf.paragraphs[0] if tf.paragraphs else tf.add_paragraph()
+            p.text = text_content
+            p.alignment = PP_ALIGN.CENTER
+            for run in p.runs:
+                run.font.size = Pt(10)
+                run.font.color.rgb = _hex_to_rgb(vmap.get("--color-text-light", "#888888"))
+        return
+
+    if "image-frame" in classes:
+        description = text_content or "Image"
+        add_image_placeholder(
+            slide,
+            left=left,
+            top=top,
+            width=width,
+            height=height,
+            description=description,
+            fill_hex=_parse_css_color(style, "background", "#F4F4F4"),
+            border_hex=vmap.get("--color-divider", "#CCCCCC"),
+            text_color_hex=vmap.get("--color-text-light", "#888888"),
+        )
+        return
+
+    # Fallback: generic colored rectangle
+    shape = slide.shapes.add_shape(
+        MSO_SHAPE.RECTANGLE,
+        Inches(left), Inches(top), Inches(width), Inches(height),
+    )
+    fill_color = _parse_css_color(style, "background", "#F4F4F4")
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = _hex_to_rgb(fill_color)
+    shape.line.fill.background()
+
+
+def _add_image_placeholder_to_slide(
+    slide, elem_div: Tag, var_map: dict[str, str] | None = None,
+) -> None:
+    """Add an image placeholder shape to a slide.
+
+    Reads data-image-description, data-image-style, and CSS position to
+    create a labeled rectangle placeholder in the PPTX.
+    """
+    vmap = var_map or {}
+    style = _resolve_vars(elem_div.get("style", ""), vmap)
+
+    left_px = _parse_css_value(style, "left")
+    top_px = _parse_css_value(style, "top")
+    width_px = _parse_css_value(style, "width")
+    height_px = _parse_css_value(style, "height")
+
+    left = _px_to_inches(left_px)
+    top = _px_to_inches(top_px)
+    width = _px_to_inches(width_px)
+    height = _px_to_inches(height_px)
+
+    if width <= 0 or height <= 0:
+        return
+
+    description = elem_div.get("data-image-description", "Image placeholder")
+    image_style = elem_div.get("data-image-style", "")
+
+    fill_hex = _parse_css_color(style, "background", "#F4F4F4")
+    border_color = vmap.get("--color-text-light", "#CCCCCC")
+    text_color = vmap.get("--color-text-light", "#888888")
+
+    add_image_placeholder(
+        slide,
+        left=left,
+        top=top,
+        width=width,
+        height=height,
+        description=description,
+        fill_hex=fill_hex,
+        text_color_hex=text_color,
+        border_hex=border_color,
+        image_style=image_style,
+    )
 
 
 def _extract_bullet_items(elem_div: Tag) -> list[str]:
@@ -703,6 +886,8 @@ def main():
                         help="Output PPTX path (default: output/presentation.pptx)")
     parser.add_argument("--base-template", type=Path, default=None,
                         help="Base template PPTX (default: templates/base/...)")
+    parser.add_argument("--no-repair", action="store_true",
+                        help="Skip the post-build repair/compaction step")
     args = parser.parse_args()
 
     if not args.html_file.exists():
@@ -714,6 +899,23 @@ def main():
         output_path=args.output,
         base_template=args.base_template,
     )
+
+    # Post-build repair: strip unused layouts/masters/media for compatibility
+    if not args.no_repair:
+        try:
+            from scripts.repair_pptx import repair_pptx
+            original_mb = result_path.stat().st_size / (1024 * 1024)
+            if original_mb > 10:  # Only repair files > 10 MB
+                logger.info(f"Running post-build repair ({original_mb:.0f} MB)...")
+                stats = repair_pptx(result_path, result_path)
+                logger.info(
+                    f"Repaired: {stats['original_size_mb']:.0f} MB → "
+                    f"{stats['final_size_mb']:.0f} MB "
+                    f"({stats['layouts_removed']} unused layouts removed, "
+                    f"{stats['media_removed']} media removed)"
+                )
+        except Exception as e:
+            logger.warning(f"Post-build repair skipped: {e}")
 
     print(f"Presentation generated: {result_path}")
 

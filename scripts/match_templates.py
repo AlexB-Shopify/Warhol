@@ -10,6 +10,7 @@ function that combines:
   5. Tag overlap                 (10%)
   6. Content capacity fit        (15%)
   + Image relevance penalty      (additive)
+  + Decoration asset fit bonus   (additive, matches visual needs to template assets)
   + Consistency groups for section headers and bookend slides
 
 Usage:
@@ -426,6 +427,84 @@ def _score_tag_overlap(
 
 
 # -----------------------------------------------------------------------
+# Decoration asset scoring
+# -----------------------------------------------------------------------
+
+# Map image_suggestions keywords to decoration asset types
+_VISUAL_KEYWORD_TO_ASSET_TYPE: dict[str, set[str]] = {
+    "diagram": {"chart_placeholder", "illustration"},
+    "architecture": {"chart_placeholder", "illustration"},
+    "flow": {"chart_placeholder", "illustration"},
+    "chart": {"chart_placeholder"},
+    "graph": {"chart_placeholder"},
+    "visualization": {"chart_placeholder"},
+    "photo": {"photo", "background_image"},
+    "screenshot": {"photo"},
+    "image": {"photo", "illustration", "background_image"},
+    "icon": {"icon", "badge"},
+    "logo": {"logo"},
+    "illustration": {"illustration"},
+}
+
+
+def _score_decoration_fit(
+    deck_slide: SlideSpec,
+    template: TemplateSlide,
+) -> float:
+    """Score how well a template's decoration assets match a slide's visual needs.
+
+    Returns a bonus/penalty (-0.1 to +0.15) based on:
+    - Match between slide image_suggestions and template asset types
+    - Richness of branded decorations on the template
+    """
+    decoration_assets = getattr(template, "decoration_assets", [])
+    if not decoration_assets:
+        return 0.0  # No decoration data — neutral
+
+    # Collect asset types on this template
+    template_asset_types: set[str] = set()
+    branded_count = 0
+    for asset in decoration_assets:
+        template_asset_types.add(asset.asset_type)
+        if asset.is_branded:
+            branded_count += 1
+
+    # Check if slide has visual needs (from image_suggestions and layout_hints)
+    visual_needs: set[str] = set()
+    for suggestion in deck_slide.image_suggestions:
+        suggestion_lower = suggestion.lower()
+        for keyword, asset_types in _VISUAL_KEYWORD_TO_ASSET_TYPE.items():
+            if keyword in suggestion_lower:
+                visual_needs.update(asset_types)
+
+    for hint in deck_slide.layout_hints:
+        hint_lower = hint.lower()
+        if "visual" in hint_lower or "image" in hint_lower:
+            visual_needs.update({"photo", "illustration", "background_image"})
+        if "diagram" in hint_lower or "chart" in hint_lower:
+            visual_needs.add("chart_placeholder")
+
+    bonus = 0.0
+
+    # Match visual needs to template assets
+    if visual_needs:
+        overlap = visual_needs & template_asset_types
+        if overlap:
+            bonus += 0.05 * min(len(overlap), 3)  # up to +0.15
+        else:
+            # Slide wants visuals but template doesn't have them
+            bonus -= 0.03
+
+    # Branded decoration richness bonus
+    if branded_count >= 3:
+        bonus += 0.03  # Rich branded template
+    elif branded_count >= 1:
+        bonus += 0.01
+
+    return round(max(-0.1, min(0.15, bonus)), 3)
+
+
+# -----------------------------------------------------------------------
 # Master scorer
 # -----------------------------------------------------------------------
 
@@ -458,6 +537,7 @@ def score_template_for_slide(
     tag_score = _score_tag_overlap(deck_slide, template)
     capacity_score = _score_content_capacity_fit(deck_slide, template)
     image_penalty = _score_image_relevance(deck_slide, template)
+    decoration_bonus = _score_decoration_fit(deck_slide, template)
 
     # Hard gate: if content score is negative, the template's text actively
     # conflicts with the deck slide's topic — reject this match
@@ -482,6 +562,9 @@ def score_template_for_slide(
 
     # Image relevance penalty (applied as additive adjustment)
     total += image_penalty
+
+    # Decoration asset fit bonus/penalty
+    total += decoration_bonus
 
     # Preferred source bonus
     if _PREFERRED_SOURCE.lower() in template.template_file.lower():
@@ -508,6 +591,7 @@ def score_template_for_slide(
         "tag_score": round(tag_score, 3),
         "capacity_score": round(capacity_score, 3),
         "image_penalty": round(image_penalty, 3),
+        "decoration_bonus": round(decoration_bonus, 3),
         "rejected": False,
     }
 

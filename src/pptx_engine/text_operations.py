@@ -11,7 +11,7 @@ from typing import Any
 from lxml import etree
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
-from pptx.enum.text import PP_ALIGN
+from pptx.enum.text import MSO_AUTO_SIZE, PP_ALIGN
 from pptx.util import Inches, Pt
 
 logger = logging.getLogger(__name__)
@@ -74,7 +74,7 @@ def add_textbox(
     tf.margin_bottom = Inches(0)
 
     try:
-        tf.auto_size = None  # Manual sizing
+        tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
     except Exception:
         pass
 
@@ -144,6 +144,11 @@ def add_bullet_list(
     tf.margin_top = Inches(0)
     tf.margin_right = Inches(0)
     tf.margin_bottom = Inches(0)
+
+    try:
+        tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+    except Exception:
+        pass
 
     for i, item in enumerate(items):
         if i == 0:
@@ -307,7 +312,7 @@ def add_multi_format_textbox(
     tf.word_wrap = True
 
     try:
-        tf.auto_size = None
+        tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
     except Exception:
         pass
 
@@ -479,6 +484,70 @@ def add_accent_bar(
     shape.fill.fore_color.rgb = _hex_to_rgb(color_hex)
     # Remove the shape's own outline
     shape.line.fill.background()
+    return shape
+
+
+def add_image_placeholder(
+    slide,
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+    description: str = "",
+    fill_hex: str = "#F4F4F4",
+    text_color_hex: str = "#888888",
+    border_hex: str = "#CCCCCC",
+    image_style: str = "",
+) -> object:
+    """Add a labeled placeholder rectangle for an image or illustration.
+
+    Creates a rectangle shape with a dashed border, light fill, and centered
+    label text describing what image should go there. The presenter (or a
+    future image pipeline) can replace this placeholder with actual imagery.
+
+    Args:
+        slide: Target slide.
+        left, top, width, height: Position and size in inches.
+        description: Label text describing the intended image.
+        fill_hex: Background fill color (default light gray).
+        text_color_hex: Label text color (default medium gray).
+        border_hex: Dashed border color (default gray).
+        image_style: Image style hint (e.g., 'diagram', 'photo').
+
+    Returns:
+        The created shape.
+    """
+    shape = slide.shapes.add_shape(
+        MSO_SHAPE.RECTANGLE,
+        Inches(left), Inches(top), Inches(width), Inches(height),
+    )
+
+    # Light fill
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = _hex_to_rgb(fill_hex)
+
+    # Dashed border
+    shape.line.color.rgb = _hex_to_rgb(border_hex)
+    shape.line.width = Pt(1.5)
+    shape.line.dash_style = 4  # MSO_LINE_DASH_STYLE.DASH (enum value 4)
+
+    # Label text centered in the shape
+    label = description
+    if image_style and image_style not in description.lower():
+        label = f"[{image_style}] {description}"
+
+    tf = shape.text_frame
+    tf.word_wrap = True
+    if tf.paragraphs:
+        p = tf.paragraphs[0]
+        p.text = label
+        p.alignment = PP_ALIGN.CENTER
+        for run in p.runs:
+            run.font.size = Pt(10)
+            run.font.color.rgb = _hex_to_rgb(text_color_hex)
+            run.font.name = "Arial"
+            run.font.italic = True
+
     return shape
 
 

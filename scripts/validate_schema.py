@@ -7,7 +7,8 @@ Usage:
 Schema names:
     ContentMaturity   -- Content maturity assessment and pipeline routing
     ContentInventory  -- Extracted content from input documents
-    DeckSchema        -- Complete slide-by-slide deck specification
+    DeckPlan          -- Structural deck blueprint (content planner output)
+    DeckSchema        -- Complete slide-by-side deck specification
     TemplateRegistry  -- Analyzed template metadata
     DesignSystem      -- Font and color configuration
     MatchResult       -- Template-to-slide matches
@@ -24,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from pydantic import BaseModel, Field
 
-from src.schemas.slide_schema import ContentInventory, ContentMaturity, DeckSchema
+from src.schemas.slide_schema import ContentInventory, ContentMaturity, DeckPlan, DeckSchema
 from src.schemas.template_schema import TemplateRegistry
 from src.schemas.design_system import DesignSystem
 from src.schemas.html_schema import HtmlDeck
@@ -55,6 +56,7 @@ class MatchResult(BaseModel):
 SCHEMA_MAP: dict[str, type[BaseModel]] = {
     "ContentInventory": ContentInventory,
     "ContentMaturity": ContentMaturity,
+    "DeckPlan": DeckPlan,
     "DeckSchema": DeckSchema,
     "TemplateRegistry": TemplateRegistry,
     "DesignSystem": DesignSystem,
@@ -98,6 +100,12 @@ def main():
             print(f"  Sections: {len(instance.sections)}")
             print(f"  Themes: {len(instance.themes)}")
             print(f"  Data points: {len(instance.key_data_points)}")
+        elif args.schema_name == "DeckPlan":
+            print(f"  Thesis: {instance.thesis[:80]}...")
+            print(f"  Narrative arc: {instance.narrative_arc}")
+            print(f"  Target slides: {instance.target_slide_count}")
+            print(f"  Sections planned: {len(instance.sections)}")
+            print(f"  New sections: {len(instance.new_sections_needed)}")
         elif args.schema_name == "DeckSchema":
             print(f"  Title: {instance.title}")
             print(f"  Slides: {len(instance.slides)}")

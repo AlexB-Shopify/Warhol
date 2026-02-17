@@ -32,6 +32,7 @@ inputs/*
 # Template Files
 templates/*
 !templates/.gitkeep
+!templates/README.md
 
 # Generated registry (regenerate with analyze-templates workflow)
 template_registry.json

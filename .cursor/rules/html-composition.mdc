@@ -185,11 +185,107 @@ Optional data attribute: `data-shape-name` — for cloned slides, targets a spec
 </div>
 ```
 
+### Image Placeholders
+
+Use image placeholders to indicate where images, illustrations, diagrams, or photos should go. The PPTX builder creates a labeled rectangle with a dashed border — the presenter (or a future image pipeline) can replace it with actual imagery.
+
+```html
+<div class="element image-placeholder"
+     data-role="image_placeholder"
+     data-image-description="Architecture diagram showing microservices topology"
+     data-image-style="diagram"
+     style="position:absolute; left:500px; top:100px; width:400px; height:350px;
+            background:var(--color-surface); border:2px dashed var(--color-text-light);
+            display:flex; align-items:center; justify-content:center;
+            font-family:var(--font-label); font-size:var(--size-label);
+            color:var(--color-text-light); font-style:italic; text-align:center;">
+  <span class="placeholder-label">Architecture diagram</span>
+</div>
+```
+
+**Required attributes:**
+- `data-role="image_placeholder"` — tells the PPTX builder to create a placeholder shape
+- `data-image-description` — descriptive text for the placeholder label (what the image should depict)
+
+**Optional attributes:**
+- `data-image-style` — hints at the type of visual:
+  - `diagram` — architecture, flow, or process diagrams
+  - `chart` — data visualization
+  - `photo` — real photography
+  - `illustration` — stylized illustration or icon set
+  - `screenshot` — product/UI screenshot
+  - `icon` — simple icon or symbol
+
+**When to use placeholders:**
+- The slide's visual intent calls for an image, diagram, or illustration
+- The content would be stronger with a visual but no suitable template image exists
+- A data visualization or chart is described in the content but can't be auto-generated
+
+**Positioning rules:**
+- Place placeholders where images belong in the layout (right column, below content, full-width)
+- Size appropriately for the content type: diagrams need ~400x350px, photos ~300x250px, icons ~80x80px
+- Don't overlap with text elements — leave clear spatial separation
+
 ### Speaker Notes
 
 ```html
 <div class="speaker-notes">Notes text here...</div>
 ```
+
+### Decoration Patterns
+
+Use decoration patterns to add visual richness to compose-mode slides. These are shape elements (not text) that the PPTX builder reproduces as PowerPoint shapes.
+
+Decoration elements use the `.decoration` class (not `.element`) and are separate from content. Position them with the same absolute CSS.
+
+**Numbered badge** — circle with a number inside (for numbered lists, step indicators):
+```html
+<div class="decoration numbered-badge"
+     style="position:absolute; left:51px; top:150px; width:36px; height:36px;
+            background:var(--color-badge-fill); color:var(--color-badge-text);">
+  1
+</div>
+```
+
+**Accent card** — rounded rectangle with colored left border (for key points, callouts):
+```html
+<div class="decoration accent-card"
+     style="position:absolute; left:100px; top:200px; width:350px; height:80px;
+            background:var(--color-surface); color:var(--color-text-dark);">
+  Key insight or callout text here
+</div>
+```
+
+**Divider line** — horizontal rule between content sections:
+```html
+<div class="decoration divider-line"
+     style="position:absolute; left:51px; top:300px; width:858px; height:1px;">
+</div>
+```
+
+**Icon placeholder** — small circle for an icon or avatar:
+```html
+<div class="decoration icon-placeholder"
+     style="position:absolute; left:51px; top:200px; width:40px; height:40px;">
+  icon
+</div>
+```
+
+**Image frame** — decorative frame for an image placeholder with caption:
+```html
+<div class="decoration image-frame"
+     style="position:absolute; left:500px; top:100px; width:400px; height:300px;">
+  Product screenshot
+</div>
+```
+
+**When to use decoration patterns:**
+- Compose-mode slides that need visual structure beyond just text
+- Numbered step layouts (badge + text pairs)
+- Callout boxes or highlighted insights
+- Visual separation between content sections
+- Icon + text row layouts for features or benefits
+- Pair decoration with `.element` text divs for rich layouts
 
 ## Composition Principles
 

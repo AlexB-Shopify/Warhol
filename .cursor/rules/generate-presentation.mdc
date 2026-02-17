@@ -39,13 +39,13 @@ python scripts/validate_schema.py workspace/content_maturity.json ContentMaturit
 
 **Report the assessment to the user** — tell them the maturity level (1-4), what stages will run, and key gaps/strengths. Ask if they agree or want to override.
 
-The maturity level determines which sub-steps run in Step 4:
+The maturity level determines which sub-steps run in Steps 3.5 and 4:
 
-| Level | Label | Step 4 includes |
+| Level | Label | Steps include |
 |---|---|---|
-| 1 | Raw ideas | Research → Content Development → Editor |
-| 2 | Outline | Content Development → Editor |
-| 3 | Draft | Editor only |
+| 1 | Raw ideas | Content Planning → Research → Content Development → Editor |
+| 2 | Outline | Content Planning → Content Development → Editor |
+| 3 | Draft | Content Planning → Editor |
 | 4 | Ready | Narrative Architecture only |
 
 ## Step 3: Extract Content Inventory
@@ -58,17 +58,37 @@ Follow the guidance in the **content-extraction** rule. Write the result to `wor
 python scripts/validate_schema.py workspace/content_inventory.json ContentInventory
 ```
 
+## Step 3.5: Plan Deck Structure (Content Planner)
+
+For maturity Levels 1-3, run the Content Planner to produce a structural blueprint before content development begins.
+
+Follow the **content-planner** rule. Read `workspace/content_inventory.json` (and `workspace/researched_outline.json` if it exists from a Level 1 Research Agent pre-pass) and produce `workspace/deck_plan.json`.
+
+```
+python scripts/validate_schema.py workspace/deck_plan.json DeckPlan
+```
+
+The deck plan decides:
+- How many slides each section gets (deep / standard / light / skip)
+- What content needs to be expanded or created from scratch
+- What new sections the presentation needs that aren't in the input
+- The narrative sequence and overall visual strategy
+
+**Report the deck plan to the user** — total planned slides, depth breakdown, new sections being created, and key expansion needs. Ask if they want to adjust before proceeding.
+
+For **Level 4**, skip this step — go directly to Narrative Architecture in Step 4.
+
 ## Step 4: Research, Write, and Edit Content
 
 This step adapts based on content maturity. All sub-steps below are about **content only** — no design decisions yet.
 
 ### Level 1: Research Agent
 
-Follow the **research-agent** rule. Read `workspace/content_inventory.json` and produce `workspace/researched_outline.json`.
+Follow the **research-agent** rule. Read `workspace/content_inventory.json` and `workspace/deck_plan.json` and produce `workspace/researched_outline.json`.
 
 ### Levels 1-2: Content Development Agent
 
-Follow the **content-development** rule. Read the latest artifact and produce `workspace/developed_content.json`.
+Follow the **content-development** rule. Read `workspace/deck_plan.json` as the primary structural input (it dictates how many slides per section, what to expand, and what to create). Produce `workspace/developed_content.json`.
 
 ### Levels 1-3: Editor Agent
 
@@ -206,8 +226,12 @@ Input Document
 3. [Extract Content] ──► content_inventory.json
     │
     ▼
+3.5 [Plan Deck Structure] ──► deck_plan.json
+    │   (depth decisions, expansion briefs, new sections, narrative sequence)
+    │
+    ▼
 4. [Research / Write / Edit] ──► deck_schema.json
-    │   (adapts per maturity level)
+    │   (guided by deck_plan.json, adapts per maturity level)
     │
     ▼
 5. [Validate Deck Schema] ──► content complete, ready for design

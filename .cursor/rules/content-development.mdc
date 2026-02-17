@@ -14,32 +14,46 @@ This agent runs when the content maturity assessment is **Level 1 (after researc
 
 ## Input
 
-Read whichever of these exist (in priority order):
-1. `workspace/researched_outline.json` — if the Research Agent ran (Level 1 flow)
-2. `workspace/content_inventory.json` — if content extraction already ran (Level 2 flow)
-3. `workspace/parsed_content.txt` — the raw content (always available)
-4. `workspace/content_maturity.json` — maturity assessment with gaps and strengths
+Read these in priority order — the **deck plan is now the primary structural input**:
+
+1. `workspace/deck_plan.json` — the structural blueprint from the Content Planner (tells you exactly how many slides per section, what to expand, and what to create from scratch)
+2. `workspace/researched_outline.json` — if the Research Agent ran (Level 1 flow)
+3. `workspace/content_inventory.json` — the raw content inventory (source material for existing content)
+4. `workspace/parsed_content.txt` — the raw content (always available)
+5. `workspace/content_maturity.json` — maturity assessment with gaps and strengths
 
 Also reference:
 - The **author** rule for writing standards (titles, bullets, speaker notes)
 - The **narrative-architecture** rule for story structure principles
 - Any user instructions about tone, audience, or emphasis
 
+## How You Use the Deck Plan
+
+The deck plan (`workspace/deck_plan.json`) is your blueprint. It tells you:
+
+- **How many slides each section gets** — follow the `slide_count` and `slide_plan` for each section
+- **What content exists vs. needs creation** — each slide's `content_source` is `"existing"`, `"expand"`, or `"create"`
+- **What to expand** — the `expansion_needed` list tells you exactly what's missing per section
+- **What to create from scratch** — `content_source: "create"` slides have a `content_brief` that specifies what to write
+- **The narrative arc and thesis** — don't reinvent these; the planner already decided them
+
+Do NOT invent your own structure. Follow the deck plan's section order, slide counts, and slide types. Your job is to fill in the content, not redesign the architecture.
+
+For `content_source: "existing"` slides: find the relevant content from the inventory and shape it for the slide.
+For `content_source: "expand"` slides: take the existing bullet or idea and develop it into a full argument with evidence.
+For `content_source: "create"` slides: write substantive new content based on the `content_brief`. Be specific — real-sounding data, concrete examples, named technologies.
+
 ## What You Do
 
-### 1. Craft the Story Arc
+### 1. Follow the Story Arc from the Deck Plan
 
-Don't just organize information — build a narrative. Every presentation tells a story:
+The deck plan provides the `thesis` and `narrative_arc`. Use these as your guide — don't reinvent them. Map each slide to its moment in the story using the plan's section sequence.
 
-- **What's the tension?** — What problem, opportunity, or question drives this presentation?
-- **What's the journey?** — How do we get from the tension to the resolution?
-- **What's the payoff?** — What does the audience leave with?
-
-Map each slide to a moment in this story. Number them. Define the emotional beat of each — is this a "wow" moment? A "hmm, interesting" moment? A "here's what to do" moment?
+For each slide, define the emotional beat — is this a "wow" moment? A "hmm, interesting" moment? A "here's what to do" moment?
 
 ### 2. Develop Each Slide's Content
 
-For every slide, produce:
+For every slide in the deck plan, produce:
 
 - **Title** that tells the story (not labels — see author rule). The audience should understand the narrative from titles alone.
 - **Body content** — bullets, paragraphs, data points, quotes. Be specific. Use real-sounding figures. Include the evidence from the research outline's `supporting_content`.

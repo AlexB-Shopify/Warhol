@@ -29,6 +29,7 @@ from pptx.enum.shapes import PP_PLACEHOLDER
 from src.schemas.slide_schema import SlideType
 from src.schemas.template_schema import (
     ContentZone,
+    DecorationAsset,
     PlaceholderInfo,
     TemplateRegistry,
     TemplateSlide,
@@ -484,6 +485,216 @@ def _count_images(slide) -> int:
     return count
 
 
+def _extract_decoration_assets(slide, content_zone_names: set[str]) -> list[dict]:
+    """Catalog decorative elements (non-content shapes) on a slide.
+
+    Identifies shapes that are NOT content zones (text placeholders) and
+    classifies them as decorative assets: accent shapes, divider lines,
+    images, badges, logos, etc.
+    """
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+
+    assets = []
+
+    for shape in slide.shapes:
+        # Skip shapes that are content zones (already cataloged as replaceable text)
+        if shape.name in content_zone_names:
+            continue
+
+        left = _safe_inches(shape.left) if shape.left else 0
+        top = _safe_inches(shape.top) if shape.top else 0
+        w = _safe_inches(shape.width) if shape.width else 0
+        h = _safe_inches(shape.height) if shape.height else 0
+
+        # Skip shapes with zero dimensions
+        if w < 0.05 and h < 0.05:
+            continue
+
+        position = (left, top, w, h)
+        area = w * h
+        color = None
+        asset_type = None
+        description = ""
+        is_branded = True
+        group_id = None
+
+        try:
+            shape_type = shape.shape_type
+        except Exception:
+            continue
+
+        # --- Pictures ---
+        try:
+            if shape_type == MSO_SHAPE_TYPE.PICTURE:
+                # Classify by size and position
+                if area > 20.0:
+                    asset_type = "background_image"
+                    description = "Full-slide or near-full background image"
+                elif w < 1.5 and h < 1.5 and (top < 0.5 or top > 4.5):
+                    asset_type = "logo"
+                    description = f"Small image ({w:.1f}x{h:.1f}in) in header/footer area"
+                elif area > 5.0:
+                    # Large centered image — likely content-specific
+                    asset_type = "photo"
+                    description = f"Large image ({w:.1f}x{h:.1f}in)"
+                    is_branded = False
+                else:
+                    asset_type = "illustration"
+                    description = f"Medium image ({w:.1f}x{h:.1f}in)"
+
+                assets.append({
+                    "asset_type": asset_type,
+                    "shape_name": shape.name,
+                    "position": position,
+                    "description": description,
+                    "is_branded": is_branded,
+                    "color": color,
+                    "group_id": group_id,
+                })
+                continue
+        except Exception:
+            pass
+
+        # --- Auto shapes (rectangles, ovals, lines, etc.) ---
+        try:
+            if shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE:
+                # Extract fill color if available
+                try:
+                    if shape.fill and shape.fill.type is not None:
+                        fg = shape.fill.fore_color
+                        if fg and fg.rgb:
+                            color = f"#{fg.rgb}"
+                except Exception:
+                    pass
+
+                # Classify by shape and size
+                if h < 0.1 and w > 1.0:
+                    asset_type = "divider_line"
+                    description = f"Thin horizontal shape ({w:.1f}x{h:.2f}in)"
+                elif w < 0.1 and h > 1.0:
+                    asset_type = "divider_line"
+                    description = f"Thin vertical shape ({w:.2f}x{h:.1f}in)"
+                elif w < 0.8 and h < 0.8 and abs(w - h) < 0.2:
+                    # Small, roughly square — likely a badge or icon container
+                    asset_type = "badge"
+                    description = f"Small shape ({w:.1f}x{h:.1f}in)"
+                    # Check if it contains text (numbered badge)
+                    if shape.has_text_frame and shape.text_frame.text.strip():
+                        txt = shape.text_frame.text.strip()
+                        description = f"Badge with text '{txt}'"
+                elif area > 15.0:
+                    asset_type = "frame"
+                    description = f"Large shape ({w:.1f}x{h:.1f}in) — likely a frame or panel"
+                elif h < 0.15:
+                    asset_type = "accent_shape"
+                    description = f"Accent bar ({w:.1f}x{h:.2f}in)"
+                elif w < 0.15:
+                    asset_type = "accent_shape"
+                    description = f"Vertical accent ({w:.2f}x{h:.1f}in)"
+                else:
+                    asset_type = "accent_shape"
+                    description = f"Decorative shape ({w:.1f}x{h:.1f}in)"
+
+                assets.append({
+                    "asset_type": asset_type,
+                    "shape_name": shape.name,
+                    "position": position,
+                    "description": description,
+                    "is_branded": is_branded,
+                    "color": color,
+                    "group_id": group_id,
+                })
+                continue
+        except Exception:
+            pass
+
+        # --- Freeform shapes ---
+        try:
+            if shape_type == MSO_SHAPE_TYPE.FREEFORM:
+                asset_type = "illustration"
+                description = f"Freeform shape ({w:.1f}x{h:.1f}in)"
+
+                try:
+                    if shape.fill and shape.fill.type is not None:
+                        fg = shape.fill.fore_color
+                        if fg and fg.rgb:
+                            color = f"#{fg.rgb}"
+                except Exception:
+                    pass
+
+                assets.append({
+                    "asset_type": asset_type,
+                    "shape_name": shape.name,
+                    "position": position,
+                    "description": description,
+                    "is_branded": is_branded,
+                    "color": color,
+                    "group_id": group_id,
+                })
+                continue
+        except Exception:
+            pass
+
+        # --- Lines ---
+        try:
+            if shape_type in (MSO_SHAPE_TYPE.LINE,):
+                asset_type = "divider_line"
+                description = f"Line ({w:.1f}x{h:.1f}in)"
+
+                assets.append({
+                    "asset_type": asset_type,
+                    "shape_name": shape.name,
+                    "position": position,
+                    "description": description,
+                    "is_branded": is_branded,
+                    "color": color,
+                    "group_id": group_id,
+                })
+                continue
+        except Exception:
+            pass
+
+        # --- Group shapes ---
+        try:
+            if shape_type == MSO_SHAPE_TYPE.GROUP:
+                asset_type = "illustration"
+                description = f"Grouped shapes ({w:.1f}x{h:.1f}in)"
+
+                assets.append({
+                    "asset_type": asset_type,
+                    "shape_name": shape.name,
+                    "position": position,
+                    "description": description,
+                    "is_branded": is_branded,
+                    "color": color,
+                    "group_id": group_id,
+                })
+                continue
+        except Exception:
+            pass
+
+        # --- Placeholder shapes that are picture-type (empty picture placeholders) ---
+        if shape.is_placeholder:
+            try:
+                ph_type = shape.placeholder_format.type
+                if ph_type == PP_PLACEHOLDER.PICTURE:
+                    asset_type = "chart_placeholder"
+                    description = f"Picture placeholder ({w:.1f}x{h:.1f}in)"
+                    assets.append({
+                        "asset_type": asset_type,
+                        "shape_name": shape.name,
+                        "position": position,
+                        "description": description,
+                        "is_branded": is_branded,
+                        "color": color,
+                        "group_id": group_id,
+                    })
+            except Exception:
+                pass
+
+    return assets
+
+
 def _calculate_content_capacity(content_zones: list[dict]) -> str:
     """Calculate how much text a slide can hold based on its content zones."""
     total_area = 0
@@ -625,6 +836,10 @@ def extract_metadata(template_dir: Path, output_path: Path):
                 # Background color extraction
                 background_color = _extract_background_color(slide)
 
+                # Extract decoration assets (non-content decorative shapes)
+                content_zone_names = {cz["shape_name"] for cz in content_zones}
+                decoration_assets = _extract_decoration_assets(slide, content_zone_names)
+
                 description = _build_slide_description(
                     idx, placeholders, shape_count, has_images, layout_name,
                     text_content=text_content,
@@ -648,6 +863,7 @@ def extract_metadata(template_dir: Path, output_path: Path):
                     "image_type": image_type,
                     "image_count": image_count,
                     "background_color": background_color,
+                    "decoration_assets": decoration_assets,
                     "description_for_classification": description,
                 })
 
@@ -717,6 +933,20 @@ def merge_classifications(descriptions_path: Path, classifications_path: Path, o
                 font_size_range=tuple(cz.get("font_size_range", (10, 44))),
             ))
 
+        # Build DecorationAsset objects from extracted data
+        decoration_assets_data = slide_data.get("decoration_assets", [])
+        decoration_asset_objs = []
+        for da in decoration_assets_data:
+            decoration_asset_objs.append(DecorationAsset(
+                asset_type=da.get("asset_type", "accent_shape"),
+                shape_name=da.get("shape_name", ""),
+                position=tuple(da["position"]),
+                description=da.get("description", ""),
+                is_branded=da.get("is_branded", True),
+                color=da.get("color"),
+                group_id=da.get("group_id"),
+            ))
+
         template = TemplateSlide(
             template_file=slide_data["template_file"],
             slide_index=slide_data["slide_index"],
@@ -742,6 +972,7 @@ def merge_classifications(descriptions_path: Path, classifications_path: Path, o
             image_type=slide_data.get("image_type", "none"),
             image_count=slide_data.get("image_count", 0),
             background_color=slide_data.get("background_color"),
+            decoration_assets=decoration_asset_objs,
         )
         templates.append(template)
 
