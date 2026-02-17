@@ -802,6 +802,81 @@ def _clear_unmapped_shapes(slide, mapped_shape_names: set[str]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Post-save fixes (python-pptx bug workarounds)
+# ---------------------------------------------------------------------------
+
+def _fix_notes_master_id(pptx_path: Path) -> None:
+    """Inject notesMasterIdLst into presentation.xml if missing.
+
+    python-pptx creates a notesMaster relationship when speaker notes are
+    added but omits the required <p:notesMasterIdLst> element in
+    presentation.xml.  Keynote and Google Slides reject files without it.
+
+    This patches the saved ZIP in place — a single XML insertion.
+    """
+    import zipfile
+    import tempfile
+    import shutil
+
+    with zipfile.ZipFile(pptx_path, "r") as zf:
+        pres_rels = zf.read("ppt/_rels/presentation.xml.rels").decode("utf-8")
+        pres_xml = zf.read("ppt/presentation.xml").decode("utf-8")
+
+        # Check: does a notesMaster relationship exist?
+        nm_match = re.search(
+            r'Id="([^"]+)"[^>]*notesMaster', pres_rels
+        )
+        if not nm_match:
+            return  # No notes in this file
+
+        # Check: is notesMasterIdLst already present?
+        if "notesMasterIdLst" in pres_xml:
+            return  # Already fixed
+
+        rid = nm_match.group(1)
+        notes_element = (
+            "<p:notesMasterIdLst>"
+            f'<p:notesMasterId r:id="{rid}"/>'
+            "</p:notesMasterIdLst>"
+        )
+
+        # Insert after </p:sldMasterIdLst>
+        patched_xml = pres_xml.replace(
+            "</p:sldMasterIdLst>",
+            f"</p:sldMasterIdLst>{notes_element}",
+        )
+
+        if patched_xml == pres_xml:
+            logger.warning("Could not find insertion point for notesMasterIdLst")
+            return
+
+    # Rewrite the ZIP with the patched presentation.xml
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".pptx")
+    try:
+        with zipfile.ZipFile(pptx_path, "r") as zf_in:
+            with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf_out:
+                for name in zf_in.namelist():
+                    if name == "ppt/presentation.xml":
+                        zf_out.writestr(name, patched_xml.encode("utf-8"))
+                    else:
+                        zf_out.writestr(name, zf_in.read(name))
+        shutil.move(tmp_path, pptx_path)
+        logger.info(f"Fixed notesMasterIdLst (r:id={rid})")
+    except Exception as e:
+        logger.warning(f"Could not fix notesMasterIdLst: {e}")
+        try:
+            Path(tmp_path).unlink(missing_ok=True)
+        except Exception:
+            pass
+    finally:
+        try:
+            import os
+            os.close(tmp_fd)
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
 # Main build pipeline
 # ---------------------------------------------------------------------------
 
@@ -864,6 +939,12 @@ def build_from_html(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     prs.save(str(output_path))
 
+    # Fix python-pptx bug: notesMasterIdLst missing from presentation.xml.
+    # python-pptx creates the notesMaster relationship when speaker notes
+    # are added but doesn't register it in the XML.  Keynote and Google
+    # Slides require this element.
+    _fix_notes_master_id(output_path)
+
     # Free caches
     clear_clone_caches()
 
@@ -900,22 +981,22 @@ def main():
         base_template=args.base_template,
     )
 
-    # Post-build repair: strip unused layouts/masters/media for compatibility
+    # Post-build compaction: strip fonts, compress images, inject docProps
     if not args.no_repair:
         try:
             from scripts.repair_pptx import repair_pptx
             original_mb = result_path.stat().st_size / (1024 * 1024)
-            if original_mb > 10:  # Only repair files > 10 MB
-                logger.info(f"Running post-build repair ({original_mb:.0f} MB)...")
+            if original_mb > 10:  # Only compact files > 10 MB
+                logger.info(f"Running post-build compaction ({original_mb:.0f} MB)...")
                 stats = repair_pptx(result_path, result_path)
                 logger.info(
-                    f"Repaired: {stats['original_size_mb']:.0f} MB → "
+                    f"Compacted: {stats['original_size_mb']:.0f} MB → "
                     f"{stats['final_size_mb']:.0f} MB "
-                    f"({stats['layouts_removed']} unused layouts removed, "
-                    f"{stats['media_removed']} media removed)"
+                    f"({stats['fonts_removed']} fonts, "
+                    f"{stats['media_compressed']} images compressed)"
                 )
         except Exception as e:
-            logger.warning(f"Post-build repair skipped: {e}")
+            logger.warning(f"Post-build compaction skipped: {e}")
 
     print(f"Presentation generated: {result_path}")
 

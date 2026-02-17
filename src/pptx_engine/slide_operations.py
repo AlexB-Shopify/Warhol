@@ -46,6 +46,7 @@ def clear_clone_caches() -> None:
     _imported_layout_cache.clear()
     _imported_master_cache.clear()
     _allocated_partnames.clear()
+    _target_layout_cache.clear()
 
 
 def _get_source_prs(source_path: Path) -> Presentation:
@@ -187,15 +188,21 @@ def clone_slide_as_is(
 ) -> object:
     """Clone a slide from a source template into the target, preserving ALL design.
 
-    Uses OPC-level part copying to preserve the full visual hierarchy:
-    1. Imports the source slide's layout (with branded backgrounds, decorative
-       shapes, logos, etc.) into the target presentation
-    2. Creates a new slide from that imported layout — inheriting all design
-    3. Copies the source slide's own shapes (text, images, groups)
-    4. Copies any slide-level background overrides
+    Two strategies, chosen automatically:
 
-    This ensures master backgrounds, layout graphics, and theme colors all
-    carry over from the source template.
+    **Same-template (preferred):** When the source layout already exists in
+    the target (common when cloning from the same template used as the base),
+    the existing layout is reused directly.  No new masters or layouts are
+    created, preserving the original OPC structure.  This is critical for
+    Google Slides / Keynote compatibility — imported masters break those
+    readers.
+
+    **Cross-template (fallback):** When the source is a *different* template,
+    the layout and its master are imported via OPC-level part copying (the
+    original behaviour).
+
+    In both cases the source slide's shapes, images, and background are
+    copied onto the new slide.
 
     Args:
         target_prs: The presentation to add the cloned slide to.
@@ -218,13 +225,28 @@ def clone_slide_as_is(
 
     source_slide = source_prs.slides[slide_index]
 
-    # --- Step 1: Import the source slide's layout into the target ---
-    imported_layout = _import_slide_layout(target_prs, source_slide, source_prs)
+    # --- Step 1: Resolve the layout ---
+    # Prefer an existing layout in the target (same-template path).
+    # Fall back to importing (cross-template path).
+    existing_layout = _find_existing_layout(target_prs, source_slide)
 
-    # --- Step 2: Add a new slide using the imported layout ---
-    # This gives us a slide that inherits the layout's backgrounds, branded
-    # graphics, decorative shapes, and master theme — automatically.
-    new_slide = target_prs.slides.add_slide(imported_layout)
+    if existing_layout is not None:
+        layout_to_use = existing_layout
+        logger.debug(
+            f"Reusing existing layout for slide {slide_index} "
+            f"(same-template fast path)"
+        )
+    else:
+        layout_to_use = _import_slide_layout(
+            target_prs, source_slide, source_prs
+        )
+        logger.debug(
+            f"Imported layout for slide {slide_index} "
+            f"(cross-template path)"
+        )
+
+    # --- Step 2: Add a new slide using the resolved layout ---
+    new_slide = target_prs.slides.add_slide(layout_to_use)
 
     # --- CRITICAL: Get the REAL spTree from the Part's XML element ---
     # python-pptx's slide.shapes._spTree can become a DETACHED element
@@ -247,19 +269,13 @@ def clone_slide_as_is(
     _copy_slide_background(source_slide, new_slide, target_package)
 
     # --- Step 5b: Ensure layout-level background survived import ---
-    # If the source slide inherits its background from the layout (common
-    # for light/white backgrounds), _copy_slide_background is a no-op.
-    # But the imported layout's background may not render correctly if the
-    # master inheritance chain changed. Check and explicitly propagate
-    # the source layout's background to the slide level if needed.
-    _ensure_layout_background(source_slide, new_slide, target_package)
+    # Only needed for the cross-template path where the master inheritance
+    # chain may have changed.  When reusing an existing layout the chain
+    # is untouched and always correct.
+    if existing_layout is None:
+        _ensure_layout_background(source_slide, new_slide, target_package)
 
     # --- Step 6: Invalidate the stale shapes proxy cache ---
-    # python-pptx's @lazyproperty on Slide.shapes caches a SlideShapes
-    # proxy pointing to the ORIGINAL spTree from CT_Slide.new().
-    # clone_layout_placeholders may replace that spTree element, leaving
-    # the proxy detached. Deleting the cache forces re-creation from the
-    # Part's current XML on next access, so text replacement works.
     try:
         if "shapes" in new_slide.__dict__:
             del new_slide.__dict__["shapes"]
@@ -280,6 +296,68 @@ def _check_dimensions(target_prs, source_prs, source_name: str) -> None:
             f"source {source_name}={sw.inches:.1f}\"x{sh.inches:.1f}\". "
             f"Drop-in slide may not fit correctly."
         )
+
+
+# ---------------------------------------------------------------------------
+# Same-template layout reuse (Google Slides compatible path)
+# ---------------------------------------------------------------------------
+
+# Cache of target layout maps: prs id → {partname → SlideLayout}
+_target_layout_cache: dict[int, dict[str, SlideLayout]] = {}
+
+
+def _find_existing_layout(
+    target_prs: Presentation,
+    source_slide,
+) -> SlideLayout | None:
+    """Check if the source slide's layout already exists in the target.
+
+    Walks ALL masters in the target (not just the first) and builds a map
+    of layout partnames.  If the source slide's layout partname matches,
+    the existing SlideLayout is returned — no import needed.
+
+    This is the fast path for same-template cloning and is critical for
+    Google Slides compatibility: imported masters/layouts break Google
+    Slides, but reusing existing ones preserves the original OPC structure.
+
+    Returns None if no match is found (triggers the import fallback).
+    """
+    prs_id = id(target_prs)
+
+    # Build / retrieve the layout map for this target presentation
+    if prs_id not in _target_layout_cache:
+        layout_map: dict[str, SlideLayout] = {}
+        for _key, rel in target_prs.part.rels.items():
+            if rel.reltype != RT.SLIDE_MASTER:
+                continue
+            master_part = rel.target_part
+            for _mkey, mrel in master_part.rels.items():
+                if mrel.reltype != RT.SLIDE_LAYOUT:
+                    continue
+                layout_part = mrel.target_part
+                partname = str(layout_part.partname)
+                layout_map[partname] = SlideLayout(
+                    layout_part._element, layout_part
+                )
+        _target_layout_cache[prs_id] = layout_map
+        logger.debug(
+            f"Built target layout map: {len(layout_map)} layouts "
+            f"across all masters"
+        )
+
+    layout_map = _target_layout_cache[prs_id]
+
+    # Find the source slide's layout partname
+    source_layout_partname = None
+    for _key, rel in source_slide.part.rels.items():
+        if rel.reltype == RT.SLIDE_LAYOUT:
+            source_layout_partname = str(rel.target_part.partname)
+            break
+
+    if source_layout_partname and source_layout_partname in layout_map:
+        return layout_map[source_layout_partname]
+
+    return None
 
 
 # ---------------------------------------------------------------------------
