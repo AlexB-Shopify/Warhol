@@ -287,6 +287,130 @@ Decoration elements use the `.decoration` class (not `.element`) and are separat
 - Icon + text row layouts for features or benefits
 - Pair decoration with `.element` text divs for rich layouts
 
+## Contrast Rules
+
+Every slide MUST have readable text. Background-font color mismatches (white on white, black on black) are the most common visual defect.
+
+### Mandatory Rules
+
+1. **Every slide MUST have an explicit `data-visual-profile` attribute** — either `"dark"` or `"light"`. Never omit it.
+2. **Every slide MUST have an explicit background** — either `template_clone` with an inline fallback color, or `solid` with a hex color. Never leave a slide with no background specification.
+3. **Dark backgrounds (luminance < 0.4) MUST use `var(--color-text-light)`** for all text elements.
+4. **Light backgrounds (luminance > 0.6) MUST use `var(--color-text-dark)` or `var(--color-text-heading)`** for all text elements.
+
+### Quick Reference
+
+| Background Color | Visual Profile | Text Color Token |
+|---|---|---|
+| `#000000` - `#333333` | dark | `var(--color-text-light)` |
+| `#191E17` (brand dark) | dark | `var(--color-text-light)` |
+| `#F4F4F4` - `#FFFFFF` | light | `var(--color-text-dark)` |
+| `var(--color-primary)` (#CDF986) | light | `var(--color-text-dark)` |
+
+### How to Check
+
+Before finalizing each slide, verify: "Is my text color the opposite luminance band from my background?" If both are dark or both are light, fix the text color.
+
+The PPTX builder runs a post-build contrast enforcement pass, but it is better to get colors right in the HTML.
+
+## Font Sizing and Overflow Prevention
+
+Text that fits in an HTML `<div>` may overflow a PPTX textbox because PowerPoint does not auto-shrink text the same way a browser does. Follow these limits to avoid clipped or overlapping text.
+
+### Safe Maximum Font Sizes
+
+| Zone | Max Font Size | Notes |
+|---|---|---|
+| Title | 36pt | Use `var(--size-title)`. Reduce for titles > 40 chars |
+| Subtitle | 22pt | Use `var(--size-subtitle)` |
+| Body text | 18pt | Use `var(--size-body)`. Reduce to 16pt for > 300 chars |
+| Bullets | 16pt | Use `var(--size-bullet)`. Reduce to 14pt for 6 items |
+| Data point (hero number) | 88pt | Only for short strings (< 6 chars) |
+| Labels / captions | 12pt | Use `var(--size-label)` |
+
+### Length-Based Sizing
+
+When text content is longer, reduce the font size proactively:
+
+- **< 100 chars**: Use the zone default
+- **100-200 chars**: Reduce by 2pt from the zone default
+- **200-400 chars**: Reduce by 4pt from the zone default
+- **> 400 chars**: Use 14pt max for body, 12pt for bullets
+
+### Rules
+
+- Never set a font-size that would cause text to exceed its `height`. If unsure, use a smaller size.
+- Titles over 60 characters should use `var(--size-subtitle)` instead of `var(--size-title)`.
+- Bullet lists with 5+ items should use 14pt max.
+- The PPTX builder applies a post-placement fit check and will reduce oversized fonts automatically, but it is better to get the size right in HTML.
+
+## Layout Grid and Positioning
+
+All elements use absolute CSS positioning on a 960x540px canvas. Follow these safe zones and layout templates to avoid overlaps, edge clipping, and illogical placement.
+
+### Safe Zones
+
+| Zone | Position | Purpose |
+|---|---|---|
+| Title | `top: 30-80px, left: 51px, width: 858px` | Slide titles |
+| Subtitle | `top: 80-120px, left: 51px, width: 858px` | Subtitles, below title |
+| Body | `top: 120-480px, left: 51px, width: 858px` | Main content area |
+| Footer/caption | `top: 480-520px, left: 51px, width: 858px` | Source labels, captions |
+
+### Margins
+
+- **Left/right**: minimum 51px from each edge (leaves a ~5% margin)
+- **Top**: minimum 30px from top edge
+- **Bottom**: minimum 20px from bottom edge (below y=520px is reserved)
+- **Element gap**: minimum 10px between adjacent text elements
+
+### Layout Templates
+
+Use these predefined position sets for common slide types. Copy the exact coordinates for consistent results.
+
+**Single-column content:**
+```
+Title:    left:51px; top:40px;  width:858px; height:55px
+Body:     left:51px; top:130px; width:858px; height:350px
+Caption:  left:51px; top:490px; width:858px; height:30px
+```
+
+**Two-column:**
+```
+Title:    left:51px;  top:40px;  width:858px; height:55px
+Left col: left:51px;  top:130px; width:410px; height:350px
+Right col:left:500px; top:130px; width:410px; height:350px
+```
+
+**Data point (hero number):**
+```
+Number:   left:51px; top:100px; width:500px; height:180px
+Context:  left:51px; top:310px; width:600px; height:80px
+Caption:  left:51px; top:420px; width:400px; height:30px
+```
+
+**Quote:**
+```
+Quote:    left:80px; top:120px; width:800px; height:200px
+Author:   left:80px; top:340px; width:400px; height:40px
+```
+
+**Image + text (right image):**
+```
+Title:    left:51px;  top:40px;  width:858px; height:55px
+Text:     left:51px;  top:130px; width:420px; height:350px
+Image:    left:500px; top:130px; width:400px; height:350px
+```
+
+### Positioning Rules
+
+1. **Never place text below y=500px** — the bottom 40px is reserved for slide labels and should not contain content.
+2. **Never place text elements that overlap each other.** When two elements would overlap, move the lower one down or reduce the height of the upper one.
+3. **Leave at least 10px gap** between adjacent text elements vertically.
+4. **Keep all elements within the slide bounds** — no `left + width > 960` or `top + height > 540`.
+5. **Use the same position template across similar slides** — all bullet_list slides should have body text at the same coordinates for visual consistency.
+6. **Title positioning should be consistent** across all slides (same left/top/width). Varying title positions between slides looks unprofessional.
+
 ## Composition Principles
 
 ### 1. The HTML Must Look Correct in a Browser
@@ -311,6 +435,49 @@ For template-cloned slides, the template defines the visual layout. Trim content
 ### 5. Slides Are Visual, Notes Are Verbal
 
 Less text on slides, more in speaker notes. A well-designed slide has a clear title, 3-4 bullet points max, and generous whitespace. The speaker notes contain the full narrative the presenter will deliver.
+
+## Using Template Content
+
+When a slide uses `template_clone`, the PPTX builder clones a branded template slide — preserving its backgrounds, images, and decorative elements. To get the most value from templates:
+
+### Preserving Template Images
+
+If the template slide has useful imagery (branded graphics, product screenshots, decorative photos), tell the builder to keep them:
+
+```html
+<div class="slide-bg slide-bg-template"
+     data-bg-type="template_clone"
+     data-template-file="templates/base/Shopify - Example Technical Workshop Slide Bank.pptx"
+     data-slide-index="42"
+     data-preserve-images="true"
+     style="background:#000000;">
+</div>
+```
+
+When `data-preserve-images="true"` is set, the builder only clears text shapes — images, grouped shapes with images, and decorative elements stay in place.
+
+### Positioning Around Template Content
+
+When preserving template images, position your text elements to complement the existing imagery:
+
+- Check the template slide's `content_zones` in the registry — these tell you where the safe text areas are
+- Don't place text elements on top of preserved images
+- Use the image as visual context and position text adjacent to it
+- If the template has a right-side image, put your text on the left (and vice versa)
+
+### When to Preserve vs. Clear
+
+| Template Content | Preserve? | Reason |
+|---|---|---|
+| Branded background patterns, gradients | Always preserved (part of background) | |
+| Product screenshots, diagrams | `data-preserve-images="true"` if relevant | Adds visual richness |
+| Decorative icons, shapes | `data-preserve-images="true"` if they fit | Brand consistency |
+| Template placeholder text | Always cleared | Replaced with real content |
+| Irrelevant stock photos | Don't preserve (omit the attribute) | Would confuse the message |
+
+### Template Registry Reference
+
+When choosing templates, check the `decoration_assets` field in the template registry. Templates with relevant images, icons, or branded decorations are more valuable than blank layouts. Prefer templates whose visual assets match the slide's content theme.
 
 ## Building from the HTML
 

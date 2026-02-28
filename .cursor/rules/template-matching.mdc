@@ -163,6 +163,34 @@ Write the result to `workspace/template_matches.json`:
 - `use_as_is` slides work best for visual/data slides that would be hard to recreate from text
 - In reasoning, always note the source file name for `use_as_is` matches
 
+## Using Template Visual Assets
+
+### Prefer Templates with Relevant Imagery
+
+A template with a relevant diagram, branded graphic, or product screenshot is significantly more valuable than a blank layout. When multiple templates score similarly, prefer the one with `decoration_assets` that match the slide's content theme.
+
+Check the template registry's `decoration_assets` field for each candidate:
+- `photo`, `illustration` — good for slides about products, people, or concepts
+- `chart_placeholder` — ideal for data-driven slides
+- `branded_shape`, `icon` — good for any slide that needs visual polish
+- `background_image` — provides visual richness even without other assets
+
+### Noting Preserved Content
+
+When matching, use the `modifications` field to note which template images or decorations should be preserved:
+
+```json
+{
+  "modifications": [
+    "Preserve right-side product screenshot (relevant to slide content)",
+    "Keep branded icon set in bottom row",
+    "Clear template chart — not relevant to this slide's data"
+  ]
+}
+```
+
+This tells the HTML composition step whether to set `data-preserve-images="true"` and how to position text around the preserved elements.
+
 ## Validation
 
 After writing the JSON file, validate it:

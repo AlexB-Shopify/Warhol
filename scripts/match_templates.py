@@ -453,9 +453,10 @@ def _score_decoration_fit(
 ) -> float:
     """Score how well a template's decoration assets match a slide's visual needs.
 
-    Returns a bonus/penalty (-0.1 to +0.15) based on:
+    Returns a bonus/penalty (-0.1 to +0.25) based on:
     - Match between slide image_suggestions and template asset types
     - Richness of branded decorations on the template
+    Templates with relevant imagery are significantly more valuable than blank layouts.
     """
     decoration_assets = getattr(template, "decoration_assets", [])
     if not decoration_assets:
@@ -490,16 +491,16 @@ def _score_decoration_fit(
     if visual_needs:
         overlap = visual_needs & template_asset_types
         if overlap:
-            bonus += 0.05 * min(len(overlap), 3)  # up to +0.15
+            bonus += 0.07 * min(len(overlap), 3)  # up to +0.21
         else:
             # Slide wants visuals but template doesn't have them
             bonus -= 0.03
 
     # Branded decoration richness bonus
     if branded_count >= 3:
-        bonus += 0.03  # Rich branded template
+        bonus += 0.04  # Rich branded template
     elif branded_count >= 1:
-        bonus += 0.01
+        bonus += 0.02
 
     return round(max(-0.1, min(0.15, bonus)), 3)
 

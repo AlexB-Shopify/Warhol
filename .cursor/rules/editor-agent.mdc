@@ -77,19 +77,27 @@ Flag slides that are too dense. Recommend splitting or cutting.
 
 ### Pass 4: Speaker Notes Refinement
 
-For every slide:
-- Notes should be **conversational** — how a confident presenter actually talks
-- Notes should **bridge** from the previous slide ("Building on that...")
-- Notes should add **context the slide can't** — the "why", the anecdote, the nuance
-- Notes should be **3-4 sentences** — guide the presenter, don't script them
-- Notes should include **the one thing the presenter must say** on this slide
+Speaker notes are the intellectual backbone of the presentation. They must be substantial.
+
+**Length requirements by slide type:**
+- content, bullet_list, two_column, comparison: **6-10 sentences** (60-90 seconds of speaking)
+- data_point, quote, image_with_text: **4-6 sentences**
+- title, closing: **3-4 sentences**
+- section_header: **2-3 sentences**
+
+**For content slides (6-10 sentences), notes MUST include all five:**
+1. Transition from the previous slide
+2. Core argument with supporting evidence
+3. A concrete example or anecdote
+4. Implication / "so what" for the audience
+5. Bridge to the next slide
 
 **Fix speaker notes that:**
-- Just repeat the slide text
-- Read like a report ("This slide shows...")
-- Are too long (more than 5 sentences)
-- Are too short (one sentence or missing entirely)
-- Lack transitions between slides
+- Just repeat the slide text — notes should add depth, not echo
+- Read like a report ("This slide shows...") — rewrite in conversational tone
+- Are too short (fewer than the minimum for the slide type) — expand with evidence, examples, and implications
+- State facts without interpretation — add the "why" and "so what"
+- Lack transitions between slides — add bridges
 
 ### Pass 5: Consistency Check
 
@@ -105,6 +113,17 @@ For slides with `visual_intent` or `image_suggestions`:
 - Does the visual concept match the content?
 - Would this slide benefit from a template slide drop-in instead of generated layout?
 - Flag slides where an existing template slide from the bank would be ideal
+
+### Pass 7: Depth Audit
+
+Final quality gate for content depth. For each content, bullet_list, two_column, and comparison slide, verify:
+
+1. **Evidence present?** — Does the speaker note cite a specific metric, data point, or source? If not, add one (real-sounding if the source material doesn't provide it).
+2. **Example present?** — Is there a concrete case study, anecdote, or use case? If not, create one.
+3. **Implication stated?** — Does the speaker note explain why this matters to the audience? If not, add "What this means for [audience] is..."
+4. **Insight, not summary?** — Does the speaker note interpret the data rather than just restating the slide? If it reads like a summary, rewrite to explain causation, implications, or surprising context.
+
+**If any content slide has speaker notes shorter than 6 sentences after all prior passes, expand them now.** This is a hard requirement — no exceptions for content slides.
 
 ## Output
 

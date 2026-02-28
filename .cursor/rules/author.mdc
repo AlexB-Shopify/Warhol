@@ -55,22 +55,37 @@ Good:
 
 ## Speaker Notes
 
-Speaker notes are what the presenter says out loud. They complement the slide -- they don't repeat it.
+Speaker notes are the presentation's intellectual backbone. A slide with a great title and 3 bullets is only as good as the 60-90 second spoken narrative that brings it to life. Speaker notes complement the slide — they add the depth, evidence, and interpretation that slides can't carry.
+
+### Length Requirements
+
+| Slide Type | Target Length |
+|---|---|
+| content, bullet_list, two_column, comparison | 6-10 sentences |
+| data_point, quote | 4-6 sentences |
+| title, closing | 3-4 sentences |
+| section_header | 2-3 sentences |
 
 ### Principles
 
 - **Conversational tone** -- write as if talking to a colleague, not reading a report
 - **Bridge slides** -- start each note with a transition from the previous slide ("Building on that growth...")
-- **Add context the slide can't** -- the "why" behind the data, the anecdote behind the stat
-- **Keep to 3-4 sentences** -- enough to guide the presenter, not a script to read verbatim
+- **Add context the slide can't** -- the "why" behind the data, the anecdote behind the stat, the interpretation behind the figure
+- **Interpret, don't restate** -- "Revenue grew 40%" is on the slide. The note should explain WHY, what drove it, what it means
+- **Include evidence** -- cite specific numbers, sources, examples that support the slide's claim
 - **Include the key talking point** -- what's the one thing the presenter must say on this slide?
 
-### Example
+### Example (shallow — avoid)
 
 Slide title: "Revenue grew 40% in Q4"
-Slide bullets: key metrics
 
-Speaker notes: "This was our strongest quarter ever, driven primarily by the enterprise segment. Worth noting -- this growth came while we actually reduced customer acquisition costs by 15%. The key driver was expansion revenue from existing accounts, which tells us our product-market fit is strengthening."
+Speaker notes: "This was our strongest quarter ever. Revenue was up 40%. Let's look at what's next."
+
+### Example (deep — target this quality)
+
+Slide title: "Revenue grew 40% in Q4"
+
+Speaker notes: "Let's pause on this number because it tells a bigger story than just top-line growth. This was our strongest quarter ever, and what makes it remarkable is the composition of that growth. The enterprise segment drove 60% of the increase, which is a significant shift from Q2 when SMB dominated our revenue mix. But here's what I find most telling — this growth came while we actually reduced customer acquisition costs by 15%. That's not a coincidence. The key driver was expansion revenue from existing accounts, particularly our mid-market clients upgrading to enterprise tiers. When existing customers spend more, it tells us two things: our product-market fit is strengthening, and our pricing model rewards deeper engagement. For context, our net revenue retention hit 128%, which puts us in the top quartile of SaaS companies by that metric. What this means for your planning is that we should be investing more in account expansion than net-new acquisition — the data says that's where the efficient growth is."
 
 ## Content Density by Slide Type
 

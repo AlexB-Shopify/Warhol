@@ -52,6 +52,8 @@ from src.pptx_engine.text_operations import (
     add_bullet_list,
     add_accent_bar,
     add_image_placeholder,
+    estimate_fit_font_size,
+    set_autofit_shrink,
 )
 from src.schemas.html_schema import DPI
 
@@ -139,12 +141,33 @@ def _parse_css_value(style: str, prop: str, default: float = 0.0) -> float:
 
 
 def _parse_css_color(style: str, prop: str = "color", default: str = "#000000") -> str:
-    """Extract a hex color from a CSS style string."""
+    """Extract a hex color from a CSS style string.
+
+    Handles #RRGGBB, #RGB shorthand, rgb(), and rgba() notations.
+    """
+    # Try 6-digit hex first
     pattern = rf"{prop}\s*:\s*(#[0-9A-Fa-f]{{6}})"
     match = re.search(pattern, style)
-    if not match:
-        return default
-    return match.group(1)
+    if match:
+        return match.group(1)
+
+    # Try 3-digit hex shorthand (#RGB -> #RRGGBB)
+    short_pattern = rf"{prop}\s*:\s*#([0-9A-Fa-f])([0-9A-Fa-f])([0-9A-Fa-f])(?![0-9A-Fa-f])"
+    short_match = re.search(short_pattern, style)
+    if short_match:
+        r, g, b = short_match.group(1), short_match.group(2), short_match.group(3)
+        return f"#{r}{r}{g}{g}{b}{b}"
+
+    # Try rgb(r, g, b) or rgba(r, g, b, a)
+    rgba_pattern = rf"{prop}\s*:\s*rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)"
+    rgba_match = re.search(rgba_pattern, style)
+    if rgba_match:
+        r = min(255, int(rgba_match.group(1)))
+        g = min(255, int(rgba_match.group(2)))
+        b = min(255, int(rgba_match.group(3)))
+        return f"#{r:02X}{g:02X}{b:02X}"
+
+    return default
 
 
 def _parse_css_string(style: str, prop: str, default: str = "") -> str:
@@ -281,12 +304,12 @@ def _build_slide_from_section(
         template_file = bg_div.get("data-template-file", "")
         slide_index_str = bg_div.get("data-slide-index", "0")
         slide_index = int(slide_index_str) if slide_index_str else 0
+        preserve_images = bg_div.get("data-preserve-images", "").lower() == "true"
 
         if template_file and Path(template_file).exists():
             try:
                 slide = clone_slide_as_is(prs, template_file, slide_index)
-                # Clear ALL text shapes from the cloned slide
-                _clear_all_text_shapes(slide)
+                _clear_all_text_shapes(slide, preserve_images=preserve_images)
                 logger.info(
                     f"Slide {slide_num}: HYBRID clone+compose from "
                     f"{Path(template_file).name} index {slide_index}"
@@ -313,11 +336,16 @@ def _build_slide_from_section(
 
         logger.info(f"Slide {slide_num}: COMPOSE from layout ({slide_type})")
     else:
-        # Hybrid mode — bg already set from clone. Check for override.
+        # Hybrid mode — verify background survived the clone.
         if bg_div:
             bg_style = _resolve_vars(bg_div.get("style", ""), vmap)
-            color_match = re.search(r"background\s*:\s*(#[0-9A-Fa-f]{6})", bg_style)
-            # Don't override if clone succeeded (bg comes from template)
+            fallback_color = _parse_css_color(bg_style, "background", "")
+            if not _verify_slide_background(slide) and fallback_color:
+                logger.warning(
+                    f"Slide {slide_num}: cloned background missing, "
+                    f"applying fallback color {fallback_color}"
+                )
+                _set_slide_bg_color(slide, fallback_color)
 
     # Detect and render accent stripe (border-left on .slide)
     slide_style = _resolve_vars(section.get("style", ""), vmap)
@@ -337,12 +365,41 @@ def _build_slide_from_section(
     for deco_div in section.find_all("div", class_="decoration"):
         _add_decoration_to_slide(slide, deco_div, vmap)
 
+    # Post-build overlap detection: warn if text shapes overlap
+    _warn_overlapping_shapes(slide, slide_num)
+
+    # Enforce text-background contrast on all text shapes
+    if bg_div:
+        resolved_bg_style = _resolve_vars(bg_div.get("style", ""), vmap)
+        bg_color_for_contrast = _parse_css_color(resolved_bg_style, "background", "")
+        if bg_color_for_contrast:
+            _enforce_contrast(slide, bg_color_for_contrast, vmap)
+
     # Speaker notes
     notes_div = section.find("div", class_="speaker-notes")
     if notes_div and notes_div.get_text(strip=True):
         _add_speaker_notes(slide, notes_div.get_text(strip=True))
 
     return "hybrid" if bg_type == "template_clone" else "compose"
+
+
+def _fitted_font_size(
+    text: str,
+    width_inches: float,
+    height_inches: float,
+    requested_pt: float,
+    font_name: str = "Arial",
+) -> int:
+    """Return the largest font size that fits, capped at *requested_pt*.
+
+    Uses the heuristic estimator and clamps to a 10pt floor.
+    """
+    fit_pt = estimate_fit_font_size(
+        text, width_inches, height_inches,
+        max_font_pt=requested_pt, min_font_pt=10.0,
+        font_name=font_name,
+    )
+    return max(10, int(min(fit_pt, requested_pt)))
 
 
 def _add_element_to_slide_compose(
@@ -352,6 +409,8 @@ def _add_element_to_slide_compose(
 
     Compose mode always creates new textboxes — there are no existing
     shapes to target.  CSS variables are resolved before parsing.
+    Font sizes are checked against the available space and reduced if
+    the text would overflow the shape.
     """
     vmap = var_map or {}
     style = _resolve_vars(elem_div.get("style", ""), vmap)
@@ -385,7 +444,9 @@ def _add_element_to_slide_compose(
     text_content = _extract_text_content(elem_div)
 
     if bullet_items:
-        add_bullet_list(
+        full_text = "\n".join(bullet_items)
+        fitted_size = _fitted_font_size(full_text, width, height, font_size_pt, font_family)
+        shape = add_bullet_list(
             slide,
             items=bullet_items,
             left=left,
@@ -393,12 +454,13 @@ def _add_element_to_slide_compose(
             width=width,
             height=height,
             font_name=font_family,
-            font_size=int(font_size_pt),
+            font_size=fitted_size,
             font_color=font_color,
             line_spacing=line_spacing or 1.2,
         )
     else:
-        add_textbox(
+        fitted_size = _fitted_font_size(text_content, width, height, font_size_pt, font_family)
+        shape = add_textbox(
             slide,
             text_content,
             left=left,
@@ -406,13 +468,17 @@ def _add_element_to_slide_compose(
             width=width,
             height=height,
             font_name=font_family,
-            font_size=int(font_size_pt),
+            font_size=fitted_size,
             font_color=font_color,
             bold=is_bold,
             italic=is_italic,
             alignment=alignment,
             line_spacing=line_spacing,
         )
+
+    # Safety net: enable PowerPoint's native shrink-on-overflow
+    if shape is not None:
+        set_autofit_shrink(shape, min_font_scale_pct=60)
 
 
 def _add_decoration_to_slide(
@@ -684,6 +750,133 @@ def _set_slide_bg_color(slide, hex_color: str) -> None:
         logger.debug(f"Could not set background color: {e}")
 
 
+def _verify_slide_background(slide) -> bool:
+    """Check whether a slide has an effective background.
+
+    Returns True if the slide has a slide-level, layout-level, or
+    master-level background with actual fill content. Returns False
+    if the background appears to be empty/missing.
+    """
+    ns_p = "http://schemas.openxmlformats.org/presentationml/2006/main"
+    ns_a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+
+    def _has_fill(bg_elem) -> bool:
+        if bg_elem is None or len(bg_elem) == 0:
+            return False
+        for bgPr in bg_elem.iter(f"{{{ns_p}}}bgPr"):
+            if (bgPr.find(f"{{{ns_a}}}solidFill") is not None
+                    or bgPr.find(f"{{{ns_a}}}gradFill") is not None
+                    or bgPr.find(f"{{{ns_a}}}blipFill") is not None
+                    or bgPr.find(f"{{{ns_a}}}pattFill") is not None):
+                return True
+        return False
+
+    try:
+        # Check slide-level background
+        if _has_fill(slide.background._element):
+            return True
+
+        # Check layout-level background
+        layout = slide.slide_layout
+        if layout:
+            for bg in layout._element.iter(f"{{{ns_p}}}bg"):
+                if _has_fill(bg):
+                    return True
+
+        # Check master-level background
+        if layout and layout.slide_master:
+            for bg in layout.slide_master._element.iter(f"{{{ns_p}}}bg"):
+                if _has_fill(bg):
+                    return True
+
+        return False
+    except Exception:
+        return True  # Assume OK if we can't check
+
+
+def _warn_overlapping_shapes(slide, slide_num) -> None:
+    """Log warnings for text shapes that overlap on a slide."""
+    text_shapes = []
+    for shape in slide.shapes:
+        if not shape.has_text_frame or not shape.text_frame.text.strip():
+            continue
+        if shape.left is None or shape.top is None:
+            continue
+        if shape.width is None or shape.height is None:
+            continue
+        left_in = shape.left / 914400
+        if left_in > 15:
+            continue
+        text_shapes.append(shape)
+
+    for i, a in enumerate(text_shapes):
+        for b in text_shapes[i + 1:]:
+            if (a.left < b.left + b.width and a.left + a.width > b.left and
+                    a.top < b.top + b.height and a.top + a.height > b.top):
+                overlap_w = (min(a.left + a.width, b.left + b.width)
+                             - max(a.left, b.left))
+                overlap_h = (min(a.top + a.height, b.top + b.height)
+                             - max(a.top, b.top))
+                area = (overlap_w / 914400) * (overlap_h / 914400)
+                if area > 0.1:
+                    logger.warning(
+                        f"Slide {slide_num}: shapes '{a.name}' and '{b.name}' "
+                        f"overlap ({area:.1f} sq in)"
+                    )
+
+
+def _hex_luminance(hex_color: str) -> float:
+    """Calculate relative luminance of a hex color (0.0 = black, 1.0 = white)."""
+    hex_color = hex_color.lstrip("#")
+    if len(hex_color) < 6:
+        return 0.5
+    try:
+        r = int(hex_color[0:2], 16) / 255
+        g = int(hex_color[2:4], 16) / 255
+        b = int(hex_color[4:6], 16) / 255
+        return 0.299 * r + 0.587 * g + 0.114 * b
+    except (ValueError, IndexError):
+        return 0.5
+
+
+def _enforce_contrast(
+    slide,
+    bg_hex: str,
+    var_map: dict[str, str],
+) -> None:
+    """Check every text shape on a slide for sufficient background contrast.
+
+    If a text run's color is too similar to the background, flip it to the
+    opposite design-system token (light text vs dark text).
+    """
+    bg_lum = _hex_luminance(bg_hex)
+    bg_is_dark = bg_lum < 0.4
+
+    light_color = var_map.get("--color-text-light", "#FFFFF6")
+    dark_color = var_map.get("--color-text-dark", "#434343")
+
+    for shape in slide.shapes:
+        if not shape.has_text_frame:
+            continue
+        for para in shape.text_frame.paragraphs:
+            for run in para.runs:
+                if not run.text.strip():
+                    continue
+                try:
+                    if run.font.color and run.font.color.rgb:
+                        text_rgb = str(run.font.color.rgb)
+                        text_lum = _hex_luminance(text_rgb)
+                        text_is_dark = text_lum < 0.4
+
+                        # Same luminance band = poor contrast
+                        if bg_is_dark and text_is_dark:
+                            run.font.color.rgb = _hex_to_rgb(light_color)
+                        elif not bg_is_dark and not text_is_dark:
+                            run.font.color.rgb = _hex_to_rgb(dark_color)
+                except (AttributeError, TypeError):
+                    pass
+
+
 def _add_speaker_notes(slide, notes_text: str) -> None:
     """Add speaker notes to a slide."""
     try:
@@ -697,17 +890,53 @@ def _add_speaker_notes(slide, notes_text: str) -> None:
 # Hybrid mode: clear all text shapes on a cloned slide
 # ---------------------------------------------------------------------------
 
-def _clear_all_text_shapes(slide) -> None:
-    """Clear and move off-canvas every text shape on a cloned slide.
+def _is_image_shape(shape) -> bool:
+    """Check if a shape is an image (picture) or contains images."""
+    try:
+        # Check for picture elements
+        ns_p = "http://schemas.openxmlformats.org/presentationml/2006/main"
+        ns_a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+        ns_r = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+
+        elem = shape._element
+        tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
+
+        # Direct picture shape
+        if tag == "pic":
+            return True
+
+        # Shape with blipFill (image fill)
+        if elem.find(f".//{{{ns_a}}}blipFill") is not None:
+            return True
+        if elem.find(f".//{{{ns_a}}}blip") is not None:
+            return True
+
+        # Group shape containing pictures
+        if tag == "grpSp":
+            for child in elem.iter():
+                child_tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+                if child_tag == "pic" or child.tag == f"{{{ns_a}}}blip":
+                    return True
+    except Exception:
+        pass
+    return False
+
+
+def _clear_all_text_shapes(slide, preserve_images: bool = False) -> None:
+    """Clear and move off-canvas text shapes on a cloned slide.
 
     Used in hybrid mode: the slide is cloned for its branded background,
-    but all original text is removed so compose-mode textboxes can be
-    added at HTML-specified positions without overlap.
+    but original text is removed so compose-mode textboxes can be added.
+
+    When preserve_images is True, image shapes and group shapes containing
+    images are kept in place — only pure text shapes are cleared.
     """
     for shape in slide.shapes:
+        if preserve_images and _is_image_shape(shape):
+            continue
+
         if shape.has_text_frame:
             tf = shape.text_frame
-            # Clear all paragraphs down to one empty paragraph
             ns_a = "http://schemas.openxmlformats.org/drawingml/2006/main"
             p_elements = list(tf._element)
             first_p = None
@@ -719,9 +948,8 @@ def _clear_all_text_shapes(slide) -> None:
                         tf._element.remove(p_el)
             if tf.paragraphs:
                 tf.paragraphs[0].text = ""
-            # Move shape off-canvas so it never renders
             try:
-                shape.left = Emu(914400 * 20)  # 20 inches off-screen
+                shape.left = Emu(914400 * 20)
             except Exception:
                 pass
 

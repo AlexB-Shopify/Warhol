@@ -35,6 +35,60 @@ def _hex_luminance(hex_color: str) -> float:
         return 0.5
 
 
+def _srgb_to_linear(c: float) -> float:
+    """Convert sRGB component (0-1) to linear RGB for WCAG luminance."""
+    return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def _wcag_luminance(hex_color: str) -> float:
+    """WCAG relative luminance (0.0 = black, 1.0 = white)."""
+    hex_color = hex_color.lstrip("#")
+    if len(hex_color) < 6:
+        return 0.5
+    try:
+        r = _srgb_to_linear(int(hex_color[0:2], 16) / 255)
+        g = _srgb_to_linear(int(hex_color[2:4], 16) / 255)
+        b = _srgb_to_linear(int(hex_color[4:6], 16) / 255)
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    except (ValueError, IndexError):
+        return 0.5
+
+
+def _contrast_ratio(hex_bg: str, hex_fg: str) -> float:
+    """WCAG 2.1 contrast ratio between two hex colors. Range 1:1 to 21:1."""
+    lum_bg = _wcag_luminance(hex_bg)
+    lum_fg = _wcag_luminance(hex_fg)
+    lighter = max(lum_bg, lum_fg)
+    darker = min(lum_bg, lum_fg)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def _get_slide_bg_color(slide) -> str | None:
+    """Extract the effective background hex color of a slide, or None."""
+    try:
+        ns_p = "http://schemas.openxmlformats.org/presentationml/2006/main"
+        ns_a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+
+        bg_elem = slide.background._element if slide.background else None
+        if bg_elem is not None and len(bg_elem) > 0:
+            color = _extract_bg_color(bg_elem, ns_p, ns_a)
+            if color is not None:
+                return color
+
+        try:
+            layout = slide.slide_layout
+            if layout:
+                for bg in layout._element.iter(f"{{{ns_p}}}bg"):
+                    color = _extract_bg_color(bg, ns_p, ns_a)
+                    if color is not None:
+                        return color
+        except Exception:
+            pass
+    except Exception:
+        pass
+    return None
+
+
 def _is_slide_background_dark(slide) -> bool | None:
     """Determine if a slide's effective background is dark.
 
@@ -79,6 +133,43 @@ def _extract_bg_color(bg_elem, ns_p: str, ns_a: str) -> str | None:
             for srgb in solid.iter(f"{{{ns_a}}}srgbClr"):
                 return srgb.get("val")
     return None
+
+
+def _has_any_background(slide) -> bool:
+    """Check if a slide has any background fill at slide, layout, or master level."""
+    try:
+        ns_p = "http://schemas.openxmlformats.org/presentationml/2006/main"
+        ns_a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+
+        def _has_fill(elem):
+            for bgPr in elem.iter(f"{{{ns_p}}}bgPr"):
+                if (bgPr.find(f"{{{ns_a}}}solidFill") is not None
+                        or bgPr.find(f"{{{ns_a}}}gradFill") is not None
+                        or bgPr.find(f"{{{ns_a}}}blipFill") is not None
+                        or bgPr.find(f"{{{ns_a}}}pattFill") is not None):
+                    return True
+            return False
+
+        bg_elem = slide.background._element if slide.background else None
+        if bg_elem is not None and _has_fill(bg_elem):
+            return True
+
+        try:
+            layout = slide.slide_layout
+            if layout:
+                for bg in layout._element.iter(f"{{{ns_p}}}bg"):
+                    if _has_fill(bg):
+                        return True
+                if layout.slide_master:
+                    for bg in layout.slide_master._element.iter(f"{{{ns_p}}}bg"):
+                        if _has_fill(bg):
+                            return True
+        except Exception:
+            pass
+
+        return False
+    except Exception:
+        return True
 
 
 def run_programmatic_checks(prs: Presentation, design_system: DesignSystem | None) -> list[dict]:
@@ -157,7 +248,7 @@ def run_programmatic_checks(prs: Presentation, design_system: DesignSystem | Non
                     "suggestion": f"Use {' or '.join(sorted(expected_fonts))} for consistency",
                 })
 
-    # Shape-to-shape overlap check
+    # Shape-to-shape overlap, boundary, and proximity checks
     for slide_idx, slide in enumerate(prs.slides, 1):
         visible_shapes = []
         for shape in slide.shapes:
@@ -172,9 +263,9 @@ def run_programmatic_checks(prs: Presentation, design_system: DesignSystem | Non
             # Skip very small decorative shapes (badges, dots, lines)
             w_inches = shape.width / 914400
             h_inches = shape.height / 914400
-            if w_inches * h_inches < 0.3:
+            if w_inches * h_inches < 0.1:
                 continue
-            # Only check shapes with text content (most likely to cause readability issues)
+            # Only check shapes with text content
             if not shape.has_text_frame or not shape.text_frame.text.strip():
                 continue
 
@@ -184,21 +275,40 @@ def run_programmatic_checks(prs: Presentation, design_system: DesignSystem | Non
                 "top": shape.top,
                 "right": shape.left + shape.width,
                 "bottom": shape.top + shape.height,
+                "width": shape.width,
+                "height": shape.height,
             })
 
-        # Check all pairs for overlap
+        # Boundary check: flag shapes extending beyond slide edges
+        for s in visible_shapes:
+            if s["right"] > slide_width * 1.02:
+                issues.append({
+                    "slide_number": slide_idx,
+                    "severity": "warning",
+                    "category": "boundary_overflow",
+                    "description": f"Shape '{s['name']}' extends past right edge of slide",
+                    "suggestion": "Reduce width or reposition left",
+                })
+            if s["bottom"] > slide_height * 1.02:
+                issues.append({
+                    "slide_number": slide_idx,
+                    "severity": "warning",
+                    "category": "boundary_overflow",
+                    "description": f"Shape '{s['name']}' extends past bottom edge of slide",
+                    "suggestion": "Reduce height or reposition upward",
+                })
+
+        # Check all pairs for overlap and near-overlap
         for a_idx in range(len(visible_shapes)):
             for b_idx in range(a_idx + 1, len(visible_shapes)):
                 a = visible_shapes[a_idx]
                 b = visible_shapes[b_idx]
-                # Bounding box intersection test
                 if (a["left"] < b["right"] and a["right"] > b["left"] and
                         a["top"] < b["bottom"] and a["bottom"] > b["top"]):
-                    # Calculate overlap area
                     overlap_w = min(a["right"], b["right"]) - max(a["left"], b["left"])
                     overlap_h = min(a["bottom"], b["bottom"]) - max(a["top"], b["top"])
                     overlap_area = (overlap_w / 914400) * (overlap_h / 914400)
-                    if overlap_area > 0.2:  # Only report significant overlaps (>0.2 sq inches)
+                    if overlap_area > 0.1:
                         issues.append({
                             "slide_number": slide_idx,
                             "severity": "warning",
@@ -209,15 +319,34 @@ def run_programmatic_checks(prs: Presentation, design_system: DesignSystem | Non
                             ),
                             "suggestion": "Reduce text, resize shapes, or reposition to avoid overlap",
                         })
+                else:
+                    # Proximity check: flag shapes within ~5px (480 EMU) of each other
+                    gap_h = max(0, max(a["left"], b["left"]) - min(a["right"], b["right"]))
+                    gap_v = max(0, max(a["top"], b["top"]) - min(a["bottom"], b["bottom"]))
+                    min_gap = min(gap_h, gap_v) if gap_h > 0 and gap_v > 0 else max(gap_h, gap_v)
+                    if min_gap > 0 and min_gap < 4800:  # ~5px at 96 DPI
+                        issues.append({
+                            "slide_number": slide_idx,
+                            "severity": "info",
+                            "category": "shape_proximity",
+                            "description": (
+                                f"Text shapes '{a['name']}' and '{b['name']}' are very close "
+                                f"(~{min_gap / 914400 * 96:.0f}px gap)"
+                            ),
+                            "suggestion": "Add more spacing between elements for visual clarity",
+                        })
 
-    # Background-text contrast check
+    # Background-text contrast check (WCAG-based)
     for slide_idx, slide in enumerate(prs.slides, 1):
         bg_is_dark = _is_slide_background_dark(slide)
         if bg_is_dark is None:
-            continue  # Can't determine background
+            continue
 
+        bg_color = _get_slide_bg_color(slide)
         dark_text_runs = 0
         light_text_runs = 0
+        low_contrast_texts: list[str] = []
+
         for shape in slide.shapes:
             if not shape.has_text_frame:
                 continue
@@ -233,6 +362,20 @@ def run_programmatic_checks(prs: Presentation, design_system: DesignSystem | Non
                                 dark_text_runs += 1
                             else:
                                 light_text_runs += 1
+
+                            # WCAG contrast ratio check
+                            if bg_color:
+                                ratio = _contrast_ratio(bg_color, rgb)
+                                is_large_text = (
+                                    run_obj.font.size is not None
+                                    and run_obj.font.size >= Pt(18)
+                                )
+                                threshold = 3.0 if is_large_text else 4.5
+                                if ratio < threshold:
+                                    preview = run_obj.text[:40].strip()
+                                    low_contrast_texts.append(
+                                        f"'{preview}' (ratio {ratio:.1f}:1)"
+                                    )
                     except (AttributeError, TypeError):
                         pass
 
@@ -240,8 +383,18 @@ def run_programmatic_checks(prs: Presentation, design_system: DesignSystem | Non
         if total_runs < 2:
             continue
 
-        # Dark bg + mostly dark text = likely invisible
-        if bg_is_dark and dark_text_runs > light_text_runs * 2:
+        if low_contrast_texts:
+            issues.append({
+                "slide_number": slide_idx,
+                "severity": "warning",
+                "category": "background_contrast",
+                "description": (
+                    f"Low text-background contrast on {len(low_contrast_texts)} "
+                    f"text run(s): {'; '.join(low_contrast_texts[:3])}"
+                ),
+                "suggestion": "Use light text on dark backgrounds and dark text on light backgrounds",
+            })
+        elif bg_is_dark and dark_text_runs > light_text_runs * 2:
             issues.append({
                 "slide_number": slide_idx,
                 "severity": "warning",
@@ -250,9 +403,8 @@ def run_programmatic_checks(prs: Presentation, design_system: DesignSystem | Non
                     f"Dark background with predominantly dark text "
                     f"({dark_text_runs} dark vs {light_text_runs} light runs)"
                 ),
-                "suggestion": "Check if background color was preserved correctly from the template",
+                "suggestion": "Use var(--color-text-light) for text on dark backgrounds",
             })
-        # Light bg + mostly light text = likely invisible
         elif not bg_is_dark and light_text_runs > dark_text_runs * 2:
             issues.append({
                 "slide_number": slide_idx,
@@ -262,8 +414,23 @@ def run_programmatic_checks(prs: Presentation, design_system: DesignSystem | Non
                     f"Light background with predominantly light text "
                     f"({light_text_runs} light vs {dark_text_runs} dark runs)"
                 ),
-                "suggestion": "Check if background color was preserved correctly from the template",
+                "suggestion": "Use var(--color-text-dark) for text on light backgrounds",
             })
+
+    # Missing background check
+    for slide_idx, slide in enumerate(prs.slides, 1):
+        bg_is_dark = _is_slide_background_dark(slide)
+        if bg_is_dark is None:
+            # Also check if the slide has ANY background at all
+            has_any_bg = _has_any_background(slide)
+            if not has_any_bg:
+                issues.append({
+                    "slide_number": slide_idx,
+                    "severity": "warning",
+                    "category": "missing_background",
+                    "description": "Slide has no detectable background (no slide-level, layout, or master fill)",
+                    "suggestion": "Add an explicit background color or use a template with a branded background",
+                })
 
     # Pacing check
     slide_count = len(prs.slides)
@@ -427,6 +594,72 @@ def describe_deck(prs: Presentation) -> str:
     return "\n\n".join(parts)
 
 
+def verify_html_fidelity(prs: Presentation, html_path: Path) -> list[dict]:
+    """Compare PPTX slide backgrounds against the HTML source to detect mismatches."""
+    issues = []
+
+    try:
+        from bs4 import BeautifulSoup
+        import re
+
+        html_content = html_path.read_text(encoding="utf-8")
+        soup = BeautifulSoup(html_content, "html.parser")
+        slide_divs = soup.find_all("div", class_="slide")
+
+        def _sort_key(div):
+            try:
+                return int(div.get("data-slide-number", "0"))
+            except ValueError:
+                return 0
+
+        slide_divs.sort(key=_sort_key)
+
+        for slide_div, slide in zip(slide_divs, prs.slides):
+            slide_num = slide_div.get("data-slide-number", "?")
+            bg_div = slide_div.find("div", class_="slide-bg")
+            if not bg_div:
+                continue
+
+            bg_style = bg_div.get("style", "")
+            html_color_match = re.search(r"background\s*:\s*(#[0-9A-Fa-f]{6})", bg_style)
+            if not html_color_match:
+                continue
+
+            html_bg_color = html_color_match.group(1).lstrip("#").upper()
+            html_bg_luminance = _hex_luminance(html_bg_color)
+
+            pptx_bg_dark = _is_slide_background_dark(slide)
+            if pptx_bg_dark is None:
+                continue
+
+            html_bg_dark = html_bg_luminance < 0.4
+            if html_bg_dark != pptx_bg_dark:
+                issues.append({
+                    "slide_number": int(slide_num) if slide_num.isdigit() else 0,
+                    "severity": "error",
+                    "category": "html_fidelity",
+                    "description": (
+                        f"Background mismatch: HTML specifies #{html_bg_color} "
+                        f"({'dark' if html_bg_dark else 'light'}) but PPTX background "
+                        f"appears {'dark' if pptx_bg_dark else 'light'}"
+                    ),
+                    "suggestion": "Check template clone background or add explicit fallback color",
+                })
+
+    except ImportError:
+        pass
+    except Exception as e:
+        issues.append({
+            "slide_number": 0,
+            "severity": "info",
+            "category": "html_fidelity",
+            "description": f"Could not compare HTML source: {e}",
+            "suggestion": "Install beautifulsoup4 for HTML fidelity checks",
+        })
+
+    return issues
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run quality checks on a PPTX file")
     parser.add_argument("pptx_file", type=Path, help="Path to the .pptx file to check")
@@ -434,6 +667,8 @@ def main():
                         help="Optional design system YAML for consistency checks")
     parser.add_argument("--deck-schema", type=Path, default=None,
                         help="Optional deck_schema.json for content verification")
+    parser.add_argument("--html-source", type=Path, default=None,
+                        help="Optional HTML source for fidelity comparison")
     parser.add_argument("-o", "--output", type=Path, default=Path("workspace/quality_report.json"),
                         help="Output JSON report path")
     parser.add_argument("--describe", action="store_true",
@@ -466,8 +701,13 @@ def main():
     # Step 3: Content verification against deck schema
     content_issues = verify_content(prs, args.deck_schema)
 
+    # Step 4: HTML fidelity comparison
+    fidelity_issues = []
+    if args.html_source and args.html_source.exists():
+        fidelity_issues = verify_html_fidelity(prs, args.html_source)
+
     # Merge all issues
-    all_issues = integrity_issues + issues + content_issues
+    all_issues = integrity_issues + issues + content_issues + fidelity_issues
 
     # Build report
     report = {
@@ -477,6 +717,7 @@ def main():
         "integrity_issues": len(integrity_issues),
         "quality_issues": len(issues),
         "content_issues": len(content_issues),
+        "fidelity_issues": len(fidelity_issues),
         "issues": all_issues,
     }
 
@@ -488,7 +729,8 @@ def main():
     print(f"Quality report written to: {args.output}")
     print(f"Slide count: {len(prs.slides)}")
     print(f"Issues: {len(all_issues)} total ({len(integrity_issues)} integrity, "
-          f"{len(issues)} quality, {len(content_issues)} content)")
+          f"{len(issues)} quality, {len(content_issues)} content, "
+          f"{len(fidelity_issues)} fidelity)")
 
     if all_issues:
         for issue in all_issues:

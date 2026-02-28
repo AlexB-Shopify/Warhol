@@ -10,13 +10,14 @@ You are a presentation quality reviewer. After the programmatic quality checks r
 
 ## Review Process
 
-1. Run the quality check script:
+1. Run the quality check script (include HTML source for fidelity comparison):
    ```
-   python scripts/quality_check.py <output.pptx> --design-system <design_system.yaml> --describe
+   python scripts/quality_check.py <output.pptx> --design-system <design_system.yaml> --html-source workspace/deck_preview.html --describe
    ```
 
 2. Read the programmatic report: `workspace/quality_report.json`
 3. Read the deck description: `workspace/quality_report.txt`
+4. Open both `output/presentation.html` and `output/presentation.pptx` — compare each slide for visual fidelity
 
 ## Assessment Criteria
 
@@ -46,3 +47,14 @@ Summarize for the user:
 - Abrupt topic transitions without section headers
 - Missing speaker notes on key slides
 - Font/color inconsistencies flagged by programmatic checks
+
+## Critical Checks (Must Pass)
+
+These are hard requirements — fix any failures before delivering:
+
+1. **No white-on-white or black-on-black text** — verify no slides have text colors matching the background. The quality check flags these as `background_contrast` warnings.
+2. **Background fidelity** — compare each slide's background in HTML vs PPTX. If using `--html-source`, the report includes `html_fidelity` issues for mismatches.
+3. **Speaker notes depth** — every content, bullet_list, two_column, and comparison slide must have at least 6 sentences of speaker notes containing evidence, examples, and implications. Shorter notes indicate shallow content.
+4. **No text overflow** — check for `text_overflow` and `boundary_overflow` warnings. Text should never extend beyond slide edges.
+5. **No shape overlaps** — check for `shape_overlap` warnings. Text boxes should not overlap each other.
+6. **Element positioning** — verify text is within safe zones (51px margins, not below y=500px). Check for `shape_proximity` info messages indicating elements are too close together.

@@ -58,7 +58,7 @@ For every slide in the deck plan, produce:
 - **Title** that tells the story (not labels — see author rule). The audience should understand the narrative from titles alone.
 - **Body content** — bullets, paragraphs, data points, quotes. Be specific. Use real-sounding figures. Include the evidence from the research outline's `supporting_content`.
 - **Visual intent** — What should this slide LOOK like? Not just "add a chart" but "a bar chart comparing processing time across 3 platforms, with Shopify highlighted in green." Describe the ideal visual clearly enough that a designer (or the template matcher) could find or create it.
-- **Speaker notes** — The conversational narrative the presenter speaks. This is where the deeper story lives. Bridge from the previous slide. Add the "why" behind the data.
+- **Speaker notes** — The conversational narrative the presenter speaks. This is the intellectual backbone of the presentation. See the **Depth Requirements** section below — speaker notes must be substantial.
 - **Slide type recommendation** — Based on the content, what slide type works best? A big statistic deserves a `data_point` slide. A comparison deserves `two_column`. A key quote deserves `quote`.
 
 ### 3. Ensure Narrative Flow
@@ -151,13 +151,46 @@ Write the developed content to `workspace/developed_content.json`:
   - All other fields match the DeckSchema format
 - `visual_strategy` (object): Overall design direction for the deck
 
+## Speaker Notes Depth Requirements
+
+Speaker notes are not an afterthought — they are the presentation's intellectual backbone. A slide with a great title and 3 bullets is only as good as the spoken narrative that brings it to life.
+
+### Minimum Length by Slide Type
+
+| Slide Type | Minimum Speaker Notes |
+|---|---|
+| content, bullet_list, two_column, comparison | **6-10 sentences** (60-90 seconds of speaking) |
+| data_point, quote, image_with_text | **4-6 sentences** (30-60 seconds) |
+| title, closing | **3-4 sentences** (transition/welcome/wrap-up) |
+| section_header | **2-3 sentences** (bridge and set up the next section) |
+
+### Required Components for Content Slides
+
+Every speaker note for content, bullet_list, two_column, and comparison slides must include ALL FIVE of these:
+
+1. **Transition** — A bridge from the previous slide ("Building on that growth story...", "Now let's look at what's driving this...")
+2. **Core argument** — The main point of this slide, stated clearly with supporting evidence ("The key insight here is that retention rates doubled after we shifted to usage-based pricing, moving from 68% to 94% in 6 months")
+3. **Concrete example or anecdote** — A specific case, story, or data point that makes the argument tangible ("For example, one of our largest enterprise clients, a fashion retailer with 200 stores, saw...")
+4. **Implication / "So what"** — Why this matters to the audience ("What this means for your teams is that...")
+5. **Bridge to next** — A sentence that sets up the next slide ("And that leads us to the question of how we actually implement this...")
+
+### Depth of Insight
+
+Don't just state facts — interpret them:
+
+- **Surface level (avoid)**: "Revenue grew 40% in Q4"
+- **Insightful (required)**: "Revenue grew 40% in Q4 because we shifted from per-seat to usage-based pricing, which removed the primary barrier for SMBs. That single pricing change accounted for 60% of our new customer acquisition."
+
+For `content_source: 'expand'` and `content_source: 'create'` slides, write speaker notes as if coaching a presenter who has never seen this material. Give them enough to speak confidently for 60-90 seconds per slide.
+
 ## Principles
 
 - **Be specific, not placeholder** — "Revenue grew 40% in Q4" not "Revenue metric goes here"
-- **Write real speaker notes** — Not "discuss the key points" but the actual words a presenter would say
+- **Write real speaker notes** — Not "discuss the key points" but the actual words a presenter would say. Follow the depth requirements above.
 - **Think visually** — Each slide should have a clear visual concept, not just text dumped on a layout
 - **Build momentum** — The deck should gain energy as it progresses toward the key message
 - **Include transitions** — Speaker notes should bridge between slides smoothly
+- **Interpret, don't summarize** — Every speaker note should explain WHY the data matters, not just restate what's on the slide
 
 ## After Completion
 

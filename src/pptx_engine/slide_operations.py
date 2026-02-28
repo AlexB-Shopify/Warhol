@@ -845,23 +845,40 @@ def _collect_hyperlink_rels(
 # Slide-level background copying
 # ---------------------------------------------------------------------------
 
-def _copy_slide_background(source_slide, target_slide, target_package) -> None:
+def _copy_slide_background(source_slide, target_slide, target_package) -> bool:
     """Copy an explicit slide-level background from source to target.
 
     Only copies if the source slide has its own background definition
     (overriding the layout). If the source inherits its background from
     the layout/master, this is a no-op — the imported layout already
     provides the correct background.
+
+    Returns True if a background was successfully copied, False otherwise.
     """
     try:
         src_bg = source_slide.background
         if src_bg is None or src_bg._element is None:
-            return
+            return False
 
         bg_elem = src_bg._element
         if len(bg_elem) == 0:
-            # No explicit background — inherits from layout (correct)
-            return
+            return False
+
+        ns_p = "http://schemas.openxmlformats.org/presentationml/2006/main"
+        ns_a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+
+        # Validate source background has actual fill data
+        has_fill = False
+        for bgPr in bg_elem.iter(f"{{{ns_p}}}bgPr"):
+            if (bgPr.find(f"{{{ns_a}}}solidFill") is not None
+                    or bgPr.find(f"{{{ns_a}}}gradFill") is not None
+                    or bgPr.find(f"{{{ns_a}}}blipFill") is not None
+                    or bgPr.find(f"{{{ns_a}}}pattFill") is not None):
+                has_fill = True
+                break
+        if not has_fill:
+            logger.debug("Source slide background has no fill data")
+            return False
 
         # Deep copy the background XML
         new_bg = copy.deepcopy(bg_elem)
@@ -881,8 +898,11 @@ def _copy_slide_background(source_slide, target_slide, target_package) -> None:
         for child in new_bg:
             tgt_bg.append(child)
 
+        return True
+
     except Exception as e:
         logger.warning(f"Could not copy slide background: {e}")
+        return False
 
 
 def _ensure_layout_background(source_slide, target_slide, target_package) -> None:

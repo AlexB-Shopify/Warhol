@@ -670,18 +670,31 @@ def _hex_to_rgb(hex_color: str) -> RGBColor:
 # Font sizing utilities
 # ---------------------------------------------------------------------------
 
+_FONT_WIDTH_FACTORS: dict[str, float] = {
+    "ShopifySans": 0.85,
+    "Shopify Sans": 0.85,
+    "Inter Tight": 0.80,
+    "Inter Tight ExtraLight": 0.80,
+    "Poppins": 0.90,
+    "Poppins Medium": 0.90,
+    "Calibri": 0.95,
+    "Helvetica": 0.92,
+    "Arial": 1.0,
+}
+
+
 def estimate_fit_font_size(
     text: str,
     shape_width_inches: float,
     shape_height_inches: float,
     max_font_pt: float = 44.0,
     min_font_pt: float = 10.0,
+    font_name: str = "Arial",
 ) -> float:
     """Estimate the largest font size (pt) at which text fits a shape.
 
-    Uses a simple character-per-line heuristic (not pixel-perfect, but
-    prevents gross overflows). Assumes roughly 1.0 characters per point
-    of width, and 1.3x font size per line height.
+    Uses a character-per-line heuristic with font-specific width factors.
+    Wider fonts (like ShopifySans) get fewer characters per line.
 
     Args:
         text: The text to fit.
@@ -689,6 +702,7 @@ def estimate_fit_font_size(
         shape_height_inches: Available height in inches.
         max_font_pt: Maximum font size to consider.
         min_font_pt: Minimum font size (floor).
+        font_name: Font family for width estimation.
 
     Returns:
         Recommended font size in points.
@@ -696,28 +710,56 @@ def estimate_fit_font_size(
     if not text or shape_width_inches <= 0 or shape_height_inches <= 0:
         return max_font_pt
 
-    # Try sizes from max down to min
+    width_factor = _FONT_WIDTH_FACTORS.get(font_name, 1.0)
+
     for size_pt in range(int(max_font_pt), int(min_font_pt) - 1, -1):
-        # Approximate chars per line at this font size
-        # At 12pt, roughly 9 chars per inch of width; scales inversely
-        chars_per_inch = max(1.0, 9.0 * (12.0 / size_pt))
+        base_chars_per_inch = max(1.0, 9.0 * (12.0 / size_pt))
+        chars_per_inch = base_chars_per_inch * width_factor
         chars_per_line = int(shape_width_inches * chars_per_inch)
         if chars_per_line < 1:
             continue
 
-        # Line height ≈ 1.3x font size in inches
-        line_height_inches = size_pt / 72.0 * 1.3
+        line_height_inches = size_pt / 72.0 * 1.35
         max_lines = max(1, int(shape_height_inches / line_height_inches))
 
-        # Estimate lines needed (word-wrap simulation)
         lines_needed = 0
         for paragraph in text.split("\n"):
             if not paragraph.strip():
                 lines_needed += 1
                 continue
-            lines_needed += max(1, -(-len(paragraph) // chars_per_line))  # ceil division
+            lines_needed += max(1, -(-len(paragraph) // chars_per_line))
 
         if lines_needed <= max_lines:
             return float(size_pt)
 
     return min_font_pt
+
+
+def set_autofit_shrink(shape, min_font_scale_pct: int = 50) -> None:
+    """Enable PowerPoint's native shrink-on-overflow for a text shape.
+
+    Sets the <a:normAutofit> XML element so PowerPoint itself will shrink
+    text down to ``min_font_scale_pct`` percent of the original size if
+    it overflows the shape. This acts as a safety net beyond our own
+    font-fitting heuristics.
+
+    Args:
+        shape: A python-pptx shape that has a text_frame.
+        min_font_scale_pct: Minimum font scale (50 = allow shrink to 50%).
+    """
+    try:
+        bodyPr = shape._element.find(
+            f".//{{{_NS_A}}}bodyPr"
+        )
+        if bodyPr is None:
+            return
+
+        # Remove existing autofit elements
+        for tag in ("noAutofit", "normAutofit", "spAutoFit"):
+            for existing in bodyPr.findall(f"{{{_NS_A}}}{tag}"):
+                bodyPr.remove(existing)
+
+        autofit = etree.SubElement(bodyPr, f"{{{_NS_A}}}normAutofit")
+        autofit.set("fontScale", str(min_font_scale_pct * 1000))
+    except Exception as e:
+        logger.debug(f"Could not set autofit: {e}")

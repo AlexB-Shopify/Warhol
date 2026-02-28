@@ -54,6 +54,13 @@ The section is central to the thesis. It has enough substance (or should have en
 - One or more **detail slides** — the core content, data, or argument
 - An **evidence/example slide** — proof point, case study, or demonstration
 
+When a section is "deep", the `content_brief` for each slide in the `slide_plan` must specify:
+- What **evidence** (metrics, data points, sources) should appear in the speaker notes
+- What **example** (case study, anecdote, use case) should illustrate the point
+- What **implication** the audience should take away ("What this means for [audience] is...")
+
+This ensures the Content Development Agent produces genuinely deep content, not just more slides with surface-level bullets.
+
 **Triggers**: High importance, rich content (300+ words or 5+ bullet points), central to thesis, audience needs convincing on this point.
 
 #### Standard (1-2 slides)

@@ -482,6 +482,35 @@ def _zone_position_to_px(position: tuple[float, float, float, float]) -> Element
     )
 
 
+def _hex_luminance(hex_color: str) -> float:
+    """Relative luminance of a hex color (0=black, 1=white)."""
+    hex_color = hex_color.lstrip("#")
+    if len(hex_color) < 6:
+        return 0.5
+    try:
+        r = int(hex_color[0:2], 16) / 255
+        g = int(hex_color[2:4], 16) / 255
+        b = int(hex_color[4:6], 16) / 255
+        return 0.299 * r + 0.587 * g + 0.114 * b
+    except (ValueError, IndexError):
+        return 0.5
+
+
+def _ensure_font_contrast(font: FontSpec, bg_color: str, design: DesignSystem) -> None:
+    """Swap font color if it has insufficient contrast against the background."""
+    if not font.color or not bg_color:
+        return
+    bg_lum = _hex_luminance(bg_color)
+    text_lum = _hex_luminance(font.color)
+    bg_dark = bg_lum < 0.4
+    text_dark = text_lum < 0.4
+
+    if bg_dark and text_dark:
+        font.color = design.dark_slide_text
+    elif not bg_dark and not text_dark:
+        font.color = design.text_heading_resolved
+
+
 def _font_for_role(
     role: str, design: DesignSystem, visual_profile: str = "light"
 ) -> FontSpec:
@@ -675,6 +704,11 @@ def deck_schema_to_html_deck(
             bg = SlideBackground(bg_type="layout", color=bg_color)
             build_mode = "compose"
             elements = _compose_elements(spec, design, visual_profile)
+
+        # Validate contrast for all elements against the background
+        for elem in elements:
+            if elem.font and bg_color:
+                _ensure_font_contrast(elem.font, bg_color, design)
 
         html_slides.append(HtmlSlide(
             slide_number=spec.slide_number,
